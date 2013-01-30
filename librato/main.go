@@ -1,26 +1,27 @@
 package main
 
 import (
+	_ "net/http/pprof"
 	"bytes"
-	"errors"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"l2met/store"
 	"l2met/utils"
+	"log"
 	"net"
 	"net/http"
-	"runtime"
-	"time"
-	"strconv"
-	"log"
 	"os"
+	"runtime"
+	"strconv"
+	"time"
 )
 
 var (
-	partitionId      int
+	partitionId     int
 	maxPartitions   int
 	workers         = flag.Int("workers", 4, "Number of routines that will post data to librato")
 	processInterval = flag.Int("proc-int", 5, "Number of seconds to wait in between bucket processing.")
@@ -66,6 +67,9 @@ var (
 )
 
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe(":"+os.Getenv("PORT"), nil))
+	}()
 	var err error
 	partitionId, err = lockPartition()
 	if err != nil {
@@ -84,7 +88,7 @@ func main() {
 	// routine to make sure that the collections of librato metrics
 	// in the outbox are homogeneous with respect to their token.
 	// This ensures that we route the metrics to the correct librato account.
-	outbox := make(chan *[]*LM, 1000)
+	outbox := make(chan []*LM, 1000)
 
 	// Routine that reads ints from the database
 	// and sends them to the inbox.
@@ -136,7 +140,7 @@ func lockPartition() (int, error) {
 	return 0, errors.New("Unable to lock partition.")
 }
 
-func report(i chan *store.Bucket, l chan *LM, o chan *[]*LM) {
+func report(i chan *store.Bucket, l chan *LM, o chan []*LM) {
 	for _ = range time.Tick(time.Second * 5) {
 		utils.MeasureI("librato.inbox", int64(len(i)))
 		utils.MeasureI("librato.lms", int64(len(l)))
@@ -230,47 +234,43 @@ func fi(x int) string {
 	return strconv.FormatInt(int64(x), 10)
 }
 
-func batch(lms <-chan *LM, outbox chan<- *[]*LM) {
-	ticker := time.Tick(time.Second)
-	batchMap := make(map[string]*[]*LM)
+func batch(lms <-chan *LM, outbox chan<- []*LM) {
+	ticker := time.Tick(time.Millisecond * 250)
+	batchMap := make(map[string][]*LM)
 	for {
 		select {
 		case <-ticker:
 			for k, v := range batchMap {
-				if len(*v) > 0 {
+				delete(batchMap, k)
+				if len(v) > 0 {
 					outbox <- v
-					delete(batchMap, k)
 				}
 			}
 		case lm := <-lms:
-			k := lm.Token
-			v, ok := batchMap[k]
+			v, ok := batchMap[lm.Token]
 			if !ok {
-				tmp := make([]*LM, 0, 50)
-				v = &tmp
-				batchMap[k] = v
-			}
-			*v = append(*v, lm)
-			if len(*v) == cap(*v) {
-				outbox <- v
-				delete(batchMap, k)
+				var tmp []*LM
+				tmp = append(tmp, lm)
+				batchMap[lm.Token] = tmp
+			} else {
+				v = append(v, lm)
 			}
 		}
 	}
 }
 
-func schedulePost(outbox <-chan *[]*LM) {
+func schedulePost(outbox <-chan []*LM) {
 	for metrics := range outbox {
-		if len(*metrics) < 1 {
+		if len(metrics) < 1 {
 			fmt.Printf("at=%q\n", "post.empty.metrics")
 			continue
 		}
-		go func() {
-			err := post(metrics)
+		go func(m *[]*LM) {
+			err := post(m)
 			if err != nil {
 				fmt.Printf("at=post-error error=%s\n", err)
 			}
-		}()
+		}(&metrics)
 	}
 }
 
