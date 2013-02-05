@@ -162,34 +162,35 @@ func fetch(t time.Time, inbox chan<- *store.Bucket) {
 	defer utils.MeasureT(time.Now(), "librato.fetch")
 	max := utils.RoundTime(t, time.Minute)
 	min := max.Add(-time.Minute)
-	ids, err := scanBuckets(min, max)
-	if err != nil {
-		return
-	}
-	for i := range ids {
-		inbox <- &store.Bucket{Id: ids[i]}
+	for id := range scanBuckets(min, max) {
+		inbox <- &store.Bucket{Id: id}
 	}
 }
 
-func scanBuckets(min, max time.Time) ([]int64, error) {
-	defer utils.MeasureT(time.Now(), "librato.scan-buckets")
-	s := "select id from buckets where time >= $1 and time < $2 "
-	s += "and MOD(id, $3) = $4 "
-	s += "order by time desc"
-	rows, err := pg.Query(s, min, max, maxPartitions, partitionId)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var buckets []int64
-	for rows.Next() {
-		var id int64
-		err = rows.Scan(&id)
+func scanBuckets(min, max time.Time) <-chan int64 {
+
+	c := make(chan int64)
+
+	go func(c chan<- int64) {
+		defer utils.MeasureT(time.Now(), "librato.scan-buckets")
+		defer close(c)
+		s := "select id from buckets where time >= $1 and time < $2 "
+		s += "and MOD(id, $3) = $4 "
+		s += "order by time desc"
+		rows, err := pg.Query(s, min, max, maxPartitions, partitionId)
 		if err == nil {
-			buckets = append(buckets, id)
+			defer rows.Close()
+			for rows.Next() {
+				var id int64
+				err = rows.Scan(&id)
+				if err == nil {
+					c <- id
+				}
+			}
 		}
-	}
-	return buckets, nil
+	}(c)
+
+	return c
 }
 
 func scheduleConvert(inbox <-chan *store.Bucket, lms chan<- *LM) {
