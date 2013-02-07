@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/garyburd/redigo/redis"
 	"l2met/store"
 	"l2met/utils"
 	"log"
@@ -160,36 +161,43 @@ func scheduleFetch(inbox chan<- *store.Bucket) {
 func fetch(t time.Time, inbox chan<- *store.Bucket) {
 	fmt.Printf("at=start_fetch minute=%d\n", t.Minute())
 	defer utils.MeasureT(time.Now(), "librato.fetch")
-	max := utils.RoundTime(t, time.Minute)
-	min := max.Add(-time.Minute)
-	ids, err := scanBuckets(min, max)
-	if err != nil {
-		return
-	}
-	for i := range ids {
-		inbox <- &store.Bucket{Id: ids[i]}
+	for bucket := range scanBuckets(t) {
+		inbox <- bucket
 	}
 }
 
-func scanBuckets(min, max time.Time) ([]int64, error) {
-	defer utils.MeasureT(time.Now(), "librato.scan-buckets")
-	s := "select id from buckets where time >= $1 and time < $2 "
-	s += "and MOD(id, $3) = $4 "
-	s += "order by time desc"
-	rows, err := pg.Query(s, min, max, maxPartitions, partitionId)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var buckets []int64
-	for rows.Next() {
-		var id int64
-		err = rows.Scan(&id)
-		if err == nil {
-			buckets = append(buckets, id)
+func scanBuckets(t time.Time) chan *store.Bucket {
+	rc := redisPool.Get()
+	defer rc.Close()
+	buckets := make(chan *store.Bucket)
+
+	go func(ch chan *store.Bucket) {
+		defer utils.MeasureT(time.Now(), "redis.scan-buckets")
+		defer close(ch)
+		p := strconv.Itoa(partitionId)
+		k := "partition:" + p
+		rc.Send("MULTI")
+		rc.Send("SMEMBERS", k)
+		rc.Send("DEL", k)
+		reply, err := redis.Values(rc.Do("EXEC"))
+		if err != nil {
+			fmt.Printf("at=%q error=%s\n", "redset-smembers", err)
+			return
 		}
-	}
-	return buckets, nil
+		var delCount int64
+		var members []string
+		redis.Scan(reply, &members, &delCount)
+		for _, member := range members {
+			k, err := store.ParseKey(member)
+			if err != nil {
+				fmt.Printf("at=parse-key error=%s\n", err)
+				continue
+			}
+			ch <- &store.Bucket{Key: *k}
+		}
+	}(buckets)
+
+	return buckets
 }
 
 func scheduleConvert(inbox <-chan *store.Bucket, lms chan<- *LM) {
@@ -206,20 +214,21 @@ func convert(b *store.Bucket, lms chan<- *LM) {
 		return
 	}
 	if len(b.Vals) == 0 {
-		fmt.Printf("at=bucket-no-vals name=%s\n", b.Name)
+		fmt.Printf("at=bucket-no-vals bucket=%s\n", b.Key.Name)
 		return
 	}
 	fmt.Printf("at=librato.process.bucket minute=%d name=%q\n",
-		b.Time.Minute(), b.Name)
-	lms <- &LM{Token: b.Token, Time: ft(b.Time), Source: b.Source, Name: b.Name + ".last", Val: ff(b.Last())}
-	lms <- &LM{Token: b.Token, Time: ft(b.Time), Source: b.Source, Name: b.Name + ".min", Val: ff(b.Min())}
-	lms <- &LM{Token: b.Token, Time: ft(b.Time), Source: b.Source, Name: b.Name + ".max", Val: ff(b.Max())}
-	lms <- &LM{Token: b.Token, Time: ft(b.Time), Source: b.Source, Name: b.Name + ".mean", Val: ff(b.Mean())}
-	lms <- &LM{Token: b.Token, Time: ft(b.Time), Source: b.Source, Name: b.Name + ".median", Val: ff(b.Median())}
-	lms <- &LM{Token: b.Token, Time: ft(b.Time), Source: b.Source, Name: b.Name + ".perc95", Val: ff(b.P95())}
-	lms <- &LM{Token: b.Token, Time: ft(b.Time), Source: b.Source, Name: b.Name + ".perc99", Val: ff(b.P99())}
-	lms <- &LM{Token: b.Token, Time: ft(b.Time), Source: b.Source, Name: b.Name + ".count", Val: fi(b.Count())}
-	lms <- &LM{Token: b.Token, Time: ft(b.Time), Source: b.Source, Name: b.Name + ".sum", Val: ff(b.Sum())}
+		b.Key.Time.Minute(), b.Key.Name)
+	k := b.Key
+	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".last", Val: ff(b.Last())}
+	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".min", Val: ff(b.Min())}
+	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".max", Val: ff(b.Max())}
+	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".mean", Val: ff(b.Mean())}
+	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".median", Val: ff(b.Median())}
+	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".perc95", Val: ff(b.P95())}
+	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".perc99", Val: ff(b.P99())}
+	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".count", Val: fi(b.Count())}
+	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".sum", Val: ff(b.Sum())}
 }
 
 func ff(x float64) string {

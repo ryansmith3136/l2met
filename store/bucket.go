@@ -2,65 +2,75 @@ package store
 
 import (
 	"bufio"
-	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/bmizerany/logplex"
+	"github.com/garyburd/redigo/redis"
+	"hash/crc32"
 	"io"
 	"l2met/encoding"
 	"l2met/utils"
 	"math"
+	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
+var (
+	maxPartitions int
+)
+
+func init() {
+	var err error
+	tmp := os.Getenv("MAX_LIBRATO_PROCS")
+	maxPartitions, err = strconv.Atoi(tmp)
+	if err != nil {
+		fmt.Printf("error=%q err=%s\n", "Unable to read MAX_LIBRATO_PROCS.", err)
+		os.Exit(1)
+	}
+}
+
 type BKey struct {
-	Time   time.Time
+	Token  string
 	Name   string
 	Source string
+	Time   time.Time
+}
+
+// time:token:name:source
+func ParseKey(s string) (*BKey, error) {
+	parts := strings.Split(s, ":")
+	if len(parts) < 3 {
+		return nil, errors.New("bucket: Unable to parse bucket key.")
+	}
+
+	t, err := strconv.ParseInt(parts[0], 10, 54)
+	if err != nil {
+		return nil, err
+	}
+
+	time := time.Unix(t, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	key := new(BKey)
+	key.Time = time
+	key.Token = parts[1]
+	key.Name = parts[2]
+	if len(parts) > 3 {
+		key.Source = parts[3]
+	}
+	return key, nil
 }
 
 type Bucket struct {
 	sync.Mutex
-	Id     int64     `json:"id"`
-	Time   time.Time `json:"time"`
-	Name   string    `json:"name"`
-	Source string    `json:"source,omitempty"`
-	Token  string
-	Vals   []float64 `json:"vals,omitempty"`
-}
-
-// Cachable Interface
-func (b *Bucket) Key() int64 {
-	return b.Id
-}
-
-func GetBuckets(token string, min, max time.Time) ([]*Bucket, error) {
-	var buckets []*Bucket
-	startQuery := time.Now()
-	rows, err := pgRead.Query("select measure, time, source, token, vals from buckets where token = $1 and time > $2 and time <= $3 order by time desc",
-		token, min, max)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	utils.MeasureT(startQuery, "buckets.get-all")
-
-	startParse := time.Now()
-	for rows.Next() {
-		var tmp []byte
-		b := new(Bucket)
-		buckets = append(buckets, b)
-		rows.Scan(&b.Name, &b.Time, &b.Source, &b.Token, &tmp)
-		if len(tmp) == 0 {
-			b.Vals = []float64{}
-			continue
-		}
-		encoding.DecodeArray(tmp, &b.Vals)
-	}
-	utils.MeasureT(startParse, "buckets.vals.decode")
-	return buckets, nil
+	Key  BKey
+	Vals []float64 `json:"vals,omitempty"`
 }
 
 func NewBucket(token string, rdr *bufio.Reader) <-chan *Bucket {
@@ -111,14 +121,12 @@ func NewBucket(token string, rdr *bufio.Reader) <-chan *Bucket {
 				fmt.Printf("at=time-error error=%s\n", err)
 				continue
 			}
+			t = utils.RoundTime(t, time.Minute)
 
-			m := &Bucket{}
-			m.Token = token
-			m.Time = utils.RoundTime(t, time.Minute)
-			m.Name = name
-			m.Source = source
-			m.Vals = append(m.Vals, val)
-			c <- m
+			k := BKey{Token: token, Name: name, Source: source, Time: t}
+			b := &Bucket{Key: k}
+			b.Vals = append(b.Vals, val)
+			c <- b
 		}
 	}(buckets)
 	return buckets
@@ -132,83 +140,62 @@ func (b *Bucket) Add(otherM *Bucket) {
 	}
 }
 
-// time:consumer:name:source
+func (b *Bucket) Partition() string {
+	i := int(crc32.ChecksumIEEE([]byte(b.String())))
+	i = i % maxPartitions
+	return "partition:" + strconv.Itoa(i)
+}
+
+// time:token:name:source
 func (b *Bucket) String() (res string) {
-	b.Lock()
-	defer b.Unlock()
-	res += strconv.FormatInt(b.Time.Unix(), 10) + ":"
-	res += b.Name
-	if len(b.Source) > 0 {
-		res += ":" + b.Source
+	res += strconv.FormatInt(b.Key.Time.Unix(), 10) + ":"
+	res += b.Key.Token + ":"
+	res += b.Key.Name
+	if len(b.Key.Source) > 0 {
+		res += ":" + b.Key.Source
 	}
 	return
 }
 
 func (b *Bucket) Get() error {
 	defer utils.MeasureT(time.Now(), "bucket.get")
-	rows, err := pgRead.Query("select measure, time, source, token, vals from buckets where id = $1",
-		b.Id)
+
+	rc := redisPool.Get()
+	defer rc.Close()
+
+	//Fill in the vals.
+	reply, err := redis.Values(rc.Do("LRANGE", b.String(), 0, -1))
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	rows.Next()
-	var tmp []byte
-	rows.Scan(&b.Name, &b.Time, &b.Source, &b.Token, &tmp)
-	err = encoding.DecodeArray(tmp, &b.Vals)
-	if err != nil {
-		return err
+	for _, item := range reply {
+		v, ok := item.([]byte)
+		if !ok {
+			continue
+		}
+		err = encoding.DecodeArray(v, &b.Vals)
 	}
 	return nil
 }
 
 func (b *Bucket) Put() error {
 	defer utils.MeasureT(time.Now(), "bucket.put")
+
 	b.Lock()
 	defer b.Unlock()
 
-	txn, err := pg.Begin()
+	rc := redisPool.Get()
+	defer rc.Close()
+
+	rc.Send("MULTI")
+	rc.Send("RPUSH", b.String(), b.Vals)
+	rc.Send("EXPIRE", b.String(), 5*time.Minute)
+	rc.Send("SADD", b.Partition(), b.String())
+	rc.Send("EXPIRE", b.Partition(), 5*time.Minute)
+	_, err := rc.Do("EXEC")
 	if err != nil {
 		return err
 	}
-
-	found := false
-	s := "select id from buckets where measure = $1 and source = $2 and time = $3"
-	rows, err := txn.Query(s, b.Name, b.Source, b.Time)
-	if err != nil {
-		txn.Rollback()
-		return err
-	}
-	for rows.Next() {
-		tmp := new(sql.NullInt64)
-		err = rows.Scan(tmp)
-		if tmp.Valid {
-			found = true
-		}
-	}
-	rows.Close()
-
-	if !found {
-		fmt.Printf("at=%q minute=%d name=%s\n",
-			"insert-bucket", b.Time.Minute(), b.Name)
-		_, err = txn.Exec("insert into buckets (measure, time, source, token) values($1,$2,$3,$4)",
-			b.Name, b.Time, b.Source, b.Token)
-		if err != nil {
-			txn.Rollback()
-			return err
-		}
-	}
-	err = txn.Commit()
-	if err != nil {
-		return err
-	}
-
-	_, err = pg.Exec("update buckets set vals = vals || $1::float8[] where measure = $2 and source = $4 and time = $3",
-		string(encoding.EncodeArray(b.Vals)), b.Name, b.Time, b.Source)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 

@@ -33,17 +33,17 @@ func DecodeArray(b []byte, dest *[]float64) error {
 	if len(b) < 2 {
 		return errors.New("l2met/parser: Not able to decode array.")
 	}
-	if b[0] != '{' {
+	if b[0] != '[' {
 		return errors.New("l2met/parser: Not able to decode array.")
 	}
-	if b[len(b)-1] != '}' {
+	if b[len(b)-1] != ']' {
 		return errors.New("l2met/parser: Not able to decode array.")
 	}
 	// pq returns something like: {1.0, 2.0}
 	// let us remove the { and the }
 	trimed := b[1:(len(b) - 1)]
 	// Assuming the numbers are seperated by commas.
-	numbers := strings.Split(string(trimed), ",")
+	numbers := strings.Split(string(trimed), " ")
 	// Showing that we can do cool things with floats.
 	for _, x := range numbers {
 		f, err := strconv.ParseFloat(x, 64)
