@@ -18,5 +18,5 @@ create table buckets (
 	vals float8[] default '{}'
 );
 
-create unique index buckets_by_measure_source_bucket
-on buckets(measure, source, time);
+create unique index buckets_by_measure_source_time_token_bucket
+on buckets(measure, source, time, token);
