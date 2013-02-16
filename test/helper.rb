@@ -25,6 +25,9 @@ class L2metTest < MiniTest::Unit::TestCase
     request.basic_auth(uri.user, uri.password)
     response = http.request(request)
     buckets = JSON.parse(response.body)
+  rescue JSON::ParserError => e
+    puts uri.request_uri
+    puts response.body
   end
 
 end

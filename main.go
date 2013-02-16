@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"sync"
 	"time"
+  "strconv"
 )
 
 var (
@@ -57,6 +58,7 @@ func main() {
 	receiver := func(w http.ResponseWriter, r *http.Request) { receiveLogs(w, r, inbox) }
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {})
 	http.HandleFunc("/logs", receiver)
+	http.HandleFunc("/metrics/", getMetrics)
 	err := http.ListenAndServe(":"+port, nil)
 	if err != nil {
 		fmt.Printf("at=error error=\"Unable to start http server.\"\n")
@@ -135,4 +137,56 @@ func outlet(outbox <-chan *store.Bucket) {
 			fmt.Printf("error=%s\n", err)
 		}
 	}
+}
+
+func getMetrics(w http.ResponseWriter, r *http.Request) {
+  defer utils.MeasureT("http-metrics", time.Now())
+
+	// Support CORS.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+
+	names := metricsPat.FindStringSubmatch(r.URL.Path)
+	if len(names) < 2 {
+		fmt.Printf("at=error error=%q\n", "Name parameter not provided.")
+		errmsg := map[string]string{"error": "Name parameter not provided."}
+		utils.WriteJson(w, 401, errmsg)
+		return
+	}
+	name := names[1]
+
+	token, err := utils.ParseToken(r)
+	if err != nil {
+		fmt.Printf("at=error error=%q\n", err)
+		errmsg := map[string]string{"error": "Missing authorization."}
+		utils.WriteJson(w, 401, errmsg)
+		return
+	}
+
+	q := r.URL.Query()
+	limit, err := strconv.ParseInt(q.Get("limit"), 10, 32)
+	if err != nil {
+		errmsg := map[string]string{"error": "Missing limit parameter."}
+		utils.WriteJson(w, 400, errmsg)
+		return
+	}
+
+	resolution, err := strconv.ParseInt(q.Get("resolution"), 10, 32)
+	if err != nil {
+		errmsg := map[string]string{"error": "Missing resolution parameter."}
+		utils.WriteJson(w, 400, errmsg)
+		return
+	}
+
+	max := utils.RoundTime(time.Now(), (time.Minute * time.Duration(resolution)))
+	min := max.Add(-1 * time.Minute * time.Duration(limit*resolution))
+
+	metrics, err := store.GetMetrics(token, name, resolution, min, max)
+	if err != nil {
+		errmsg := map[string]string{"error": "Unable to find metrics."}
+		utils.WriteJson(w, 500, errmsg)
+		return
+	}
+	utils.WriteJson(w, 200, metrics)
 }

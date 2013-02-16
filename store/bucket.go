@@ -192,7 +192,7 @@ func (b *Bucket) Get() error {
 		if !ok {
 			continue
 		}
-		err = encoding.DecodeArray(v, &b.Vals)
+		err = encoding.DecodeArray(v, &b.Vals, '[', ']', ' ')
 	}
 	return nil
 }

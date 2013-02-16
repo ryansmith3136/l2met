@@ -88,7 +88,7 @@ func writeToPostgres(bucket *store.Bucket) error {
 		return err
 	}
 
-	vals := string(encoding.EncodeArray(bucket.Vals))
+	vals := string(encoding.EncodeArray(bucket.Vals, '{', '}', ','))
 	row := tx.QueryRow(`
 		SELECT id
 		FROM buckets
