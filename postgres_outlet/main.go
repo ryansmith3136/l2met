@@ -16,6 +16,7 @@ var (
 	numPartitions   uint64
 	workers         int
 	processInterval int
+	lockTTL         uint64
 )
 
 func init() {
@@ -24,11 +25,12 @@ func init() {
 	workers = utils.EnvInt("LOCAL_WORKERS", 2)
 	processInterval = utils.EnvInt("POSTGRES_INTERVAL", 5)
 	numPartitions = utils.EnvUint64("NUM_OUTLET_PARTITIONS", 1)
+	lockTTL = utils.EnvUint64("LOCK_TTL", 10)
 }
 
 func main() {
 	var err error
-	partitionId, err = utils.LockPartition(pg, "postgres_outlet", numPartitions)
+	partitionId, err = utils.LockPartition("postgres_outlet", numPartitions, lockTTL)
 	if err != nil {
 		log.Fatal("Unable to lock partition.")
 	}
