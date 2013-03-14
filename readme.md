@@ -6,58 +6,42 @@ Convert a formatted log stream into metrics.
 * [Log Conventions](#log-conventions)
 * [API](#api)
 * [Setup](#setup)
+* [Architecture](#architecture)
 
 ## Synopsis
 
 L2met receives HTTP requests that contain a body of rfc5424 formatted data. Commonly data is drained into l2met by [logplex](https://github.com/heroku/logplex) or [log-shuttle](https://github.com/ryandotsmith/log-shuttle).
 
-Once data is delivered, l2met extracts and parses the individual log lines using the [log conventions](#log-conventions) and then stores the data in redis so that outlets can read the data and build metrics.
-
-![img](http://f.cl.ly/items/3W2n313N3p1x0d0m1e35/l2met-arch.png)
+Once data is delivered, l2met extracts and parses the individual log lines using the [log conventions](#log-conventions) and then stores the data in redis so that outlets can read the data and build metrics. The librato_outlet is the most popular and will put all of your metrics into your librato account. See the [setup](#setup) section to get started.
 
 ## Log Conventions
 
-L2met uses convention over configuration to build metrics. There are two basic metric types: Counters & Lists.
+L2met uses convention over configuration to build metrics.
 
-### Counters
-
+```
+measure="myapp" view=20 db=10
+```
 Metrics Produced:
 
-* count
+* myapp.view.min
+* myapp.view.median
+* myapp.view.perc95
+* myapp.view.perc99
+* myapp.view.max
+* myapp.view.mean
+* myapp.view.last
+* myapp.view.count
+* myapp.view.sum
 
-```
-measure="app.module.function"
-```
-
-### Lists
-
-Lists are useful for building metrics around time based functions. For instance, the elapsed duration of a function call. Or you can measure the value of an in memory resource.
-
-Metrics Produced:
-
-* min
-* median
-* perc95
-* perc99
-* max
-* mean
-* last
-* count
-* sum
-
-Protocol:
-
-```
-measure="app.module.function" val=42
-```
-
-Examples:
-
-```
-measure="core.apps.get" val=1.23
-```
-
-In the previous example we have an app named **core** which has an HTTP GET endpoint named **apps** that took 1.23 seconds to execute.
+* myapp.db.min
+* myapp.db.median
+* myapp.db.perc95
+* myapp.db.perc99
+* myapp.db.max
+* myapp.db.mean
+* myapp.db.last
+* myapp.db.count
+* myapp.db.sum
 
 ## API
 
@@ -233,3 +217,7 @@ $ echo 'measure="hello-from-your-l2met"' | log-shuttle
 ```
 
 Now you should be able to see `hello-from-your-l2met` in your librato metrics web ui.
+
+## Architecture
+
+![img](http://f.cl.ly/items/3W2n313N3p1x0d0m1e35/l2met-arch.png)

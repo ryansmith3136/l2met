@@ -82,26 +82,26 @@ func NewBucket(token string, rdr *bufio.Reader) <-chan *Bucket {
 				continue
 			}
 
-			name, ok := d["measure"]
-			if !ok {
-				continue
+			var measure string
+			switch {
+			case string(packet.User) == "router":
+				measure = "router"
+				if host, ok := d["host"]; ok {
+					measure = host + "." + measure
+				}
+			case string(packet.User) == "runtime":
+				measure = "runtime"
+			default:
+				m, ok := d["measure"]
+				if !ok {
+					continue
+				}
+				measure = m
 			}
 
 			source, ok := d["source"]
 			if !ok {
 				source = ""
-			}
-
-			var val float64
-			tmpVal, ok := d["val"]
-			if ok {
-				val, err = strconv.ParseFloat(tmpVal, 64)
-				if err != nil {
-					fmt.Printf("at=error error=\"unable to parse val.\"\n")
-					continue
-				}
-			} else {
-				val = float64(1)
 			}
 
 			t, err := packet.Time()
@@ -111,10 +111,23 @@ func NewBucket(token string, rdr *bufio.Reader) <-chan *Bucket {
 			}
 			t = utils.RoundTime(t, time.Minute)
 
-			k := BKey{Token: token, Name: name, Source: source, Time: t}
-			b := &Bucket{Key: k}
-			b.Vals = append(b.Vals, val)
-			c <- b
+			for k, v := range d {
+				v = strings.Replace(v, "ms", "", -1)
+				val, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					continue
+				}
+				var name string
+				if k == "val" {
+					name = measure
+				} else {
+					name = measure + "." + k
+				}
+				k := BKey{Token: token, Name: name, Source: source, Time: t}
+				b := &Bucket{Key: k}
+				b.Vals = append(b.Vals, val)
+				c <- b
+			}
 		}
 	}(buckets)
 	return buckets

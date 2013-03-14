@@ -7,9 +7,7 @@ import (
 	"strings"
 )
 
-var (
-	msgPat = regexp.MustCompile(`( *)([a-zA-Z0-9\_\-\.]+)=?(([a-zA-Z0-9\.\-\_\.]+)|("([^\"]+)"))?`)
-)
+var msgPat = regexp.MustCompile(`( *)([a-zA-Z0-9\_\-\.]+)=?(([a-zA-Z0-9\.\-\_\.]+)|("([^\"]+)"))?`)
 
 func ParseMsgData(msg []byte) (map[string]string, error) {
 	d := make(map[string]string)
