@@ -118,9 +118,12 @@ func NewBucket(token string, rdr *bufio.Reader) <-chan *Bucket {
 					continue
 				}
 				var name string
-				if k == "val" {
+				switch {
+				case strings.HasPrefix(k, "measure."):
+					name = measure + "." + k[8:]
+				case k == "val":
 					name = measure
-				} else {
+				default:
 					name = measure + "." + k
 				}
 				k := BKey{Token: token, Name: name, Source: source, Time: t}

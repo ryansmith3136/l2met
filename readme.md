@@ -19,7 +19,7 @@ Once data is delivered, l2met extracts and parses the individual log lines using
 L2met uses convention over configuration to build metrics.
 
 ```
-measure="myapp" view=20 db=10
+measure="myapp" measure.view=20 measure.db=10
 ```
 Metrics Produced:
 
