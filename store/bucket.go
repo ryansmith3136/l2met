@@ -33,16 +33,19 @@ type BKey struct {
 func ParseKey(s string) (*BKey, error) {
 	parts := strings.Split(s, keySep)
 	if len(parts) < 3 {
+		fmt.Printf("at=parse-key error=\"wrong number of parts\"\n")
 		return nil, errors.New("bucket: Unable to parse bucket key.")
 	}
 
 	t, err := strconv.ParseInt(parts[0], 10, 54)
 	if err != nil {
+		fmt.Printf("at=parse-key error=%s\n", err)
 		return nil, err
 	}
 
 	time := time.Unix(t, 0)
 	if err != nil {
+		fmt.Printf("at=parse-key error=%s\n", err)
 		return nil, err
 	}
 
@@ -53,6 +56,7 @@ func ParseKey(s string) (*BKey, error) {
 	if len(parts) > 3 {
 		key.Source = parts[3]
 	}
+
 	return key, nil
 }
 
@@ -225,15 +229,16 @@ func (b *Bucket) Put(partitions uint64) error {
 	rc := redisPool.Get()
 	defer rc.Close()
 	libratoMailBox := fmt.Sprintf("librato_outlet.%d", partition)
-	//pgMailBox := fmt.Sprintf("postgres_outlet.%d", partition)
-
+	pgMailBox := fmt.Sprintf("postgres_outlet.%d", partition)
+	print("pushing bucket on to#")
+	println(pgMailBox)
 	rc.Send("MULTI")
 	rc.Send("RPUSH", key, vals)
 	rc.Send("EXPIRE", key, 300)
 	rc.Send("SADD", libratoMailBox, key)
 	rc.Send("EXPIRE", libratoMailBox, 300)
-	//rc.Send("SADD", pgMailBox, key)
-	//rc.Send("EXPIRE", pgMailBox, 300)
+	rc.Send("SADD", pgMailBox, key)
+	rc.Send("EXPIRE", pgMailBox, 300)
 	_, err := rc.Do("EXEC")
 	if err != nil {
 		return err
