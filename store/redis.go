@@ -1,32 +1,25 @@
 package store
 
 import (
-	"fmt"
 	"github.com/garyburd/redigo/redis"
-	"net/url"
-	"os"
 	"time"
+	"l2met/utils"
+	"log"
 )
 
 var redisPool *redis.Pool
 
 func init() {
-	u, err := url.Parse(os.Getenv("REDIS_URL"))
+	var err error
+	host, password, err := utils.ParseRedisUrl()
 	if err != nil {
-		fmt.Printf("error=%q\n", "Missing REDIS_URL.")
-		os.Exit(1)
-	}
-	server := u.Host
-	password, set := u.User.Password()
-	if !set {
-		fmt.Printf("at=error error=%q\n", "password not set")
-		os.Exit(1)
+		log.Fatal(err)
 	}
 	redisPool = &redis.Pool{
 		MaxIdle:     60,
 		IdleTimeout: 10 * time.Second,
 		Dial: func() (redis.Conn, error) {
-			c, err := redis.DialTimeout("tcp", server, time.Second, time.Second, time.Second)
+			c, err := redis.DialTimeout("tcp", host, time.Second, time.Second, time.Second)
 			if err != nil {
 				return nil, err
 			}

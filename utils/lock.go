@@ -5,7 +5,24 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"time"
+	"log"
 )
+
+var rc redis.Conn
+
+func init() {
+	var err error
+	host, password, err := ParseRedisUrl()
+	if err != nil {
+		log.Fatal(err)
+	}
+	rc, err = redis.DialTimeout("tcp", host, time.Second, time.Second, time.Second)
+	if err != nil {
+		log.Fatalf("Locking service is unable to connect to redis. err: %s",
+			err)
+	}
+	rc.Do("AUTH", password)
+}
 
 func LockPartition(ns string, max, ttl uint64) (uint64, error) {
 	for {
@@ -16,6 +33,7 @@ func LockPartition(ns string, max, ttl uint64) (uint64, error) {
 				return 0, err
 			}
 			if locked {
+				fmt.Printf("Lock acquired. partition=%d\n", p)
 				return p, nil
 			}
 		}
@@ -25,9 +43,6 @@ func LockPartition(ns string, max, ttl uint64) (uint64, error) {
 }
 
 func writeLock(name string, ttl uint64) (bool, error) {
-	rc := redisPool.Get()
-	defer rc.Close()
-
 	new := time.Now().Unix() + int64(ttl) + 1
 	old, err := redis.Int(rc.Do("GETSET", name, new))
 	// If the ErrNil is present, the old value is set to 0.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -83,6 +84,18 @@ func WriteJson(w http.ResponseWriter, status int, data interface{}) {
 
 func RoundTime(t time.Time, d time.Duration) time.Time {
 	return time.Unix(0, int64((time.Duration(t.UnixNano())/d)*d))
+}
+
+func ParseRedisUrl() (string, string, error) {
+	u, err := url.Parse(os.Getenv("REDIS_URL"))
+	if err != nil {
+		return "", "", errors.New("utils: Missing REDIS_URL")
+	}
+	var password string
+	if u.User != nil {
+		password, _ = u.User.Password()
+	}
+	return u.Host, password, nil
 }
 
 func ParseToken(r *http.Request) (string, error) {
