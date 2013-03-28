@@ -1,8 +1,6 @@
-package store
+package token
 
-import (
-	"fmt"
-)
+import "fmt"
 
 type Token struct {
 	Id   string

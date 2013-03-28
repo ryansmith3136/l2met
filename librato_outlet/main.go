@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
+	"l2met/bucket"
 	"l2met/store"
+	"l2met/token"
 	"l2met/utils"
 	"log"
 	"net"
@@ -51,26 +52,14 @@ func init() {
 	}
 }
 
-var redisPool *redis.Pool
+var rs *store.RedisStore
 
 func init() {
-	var err error
-	host, password, err := utils.ParseRedisUrl()
+	server, pass, err := utils.ParseRedisUrl()
 	if err != nil {
 		log.Fatal(err)
 	}
-	redisPool = &redis.Pool{
-		MaxIdle:     maxRedisConn,
-		IdleTimeout: 10 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.DialTimeout("tcp", host, time.Second, time.Second, time.Second)
-			if err != nil {
-				return nil, err
-			}
-			c.Do("AUTH", password)
-			return c, err
-		},
-	}
+	rs = store.NewRedisStore(server, pass, numPartitions, maxRedisConn)
 }
 
 type LM struct {
@@ -89,7 +78,7 @@ func main() {
 	// The inbox is used to hold empty buckets that are
 	// waiting to be processed. We buffer the chanel so
 	// as not to slow down the fetch routine. We can
-	inbox := make(chan *store.Bucket, 1000)
+	inbox := make(chan *bucket.Bucket, 1000)
 	// The converter will take items from the inbox,
 	// fill in the bucket with the vals, then convert the
 	// bucket into a librato metric.
@@ -126,7 +115,7 @@ func main() {
 	report(inbox, lms, outbox)
 }
 
-func report(i chan *store.Bucket, l chan *LM, o chan []*LM) {
+func report(i chan *bucket.Bucket, l chan *LM, o chan []*LM) {
 	for _ = range time.Tick(time.Second * 5) {
 		utils.MeasureI("librato_outlet.inbox", int64(len(i)))
 		utils.MeasureI("librato_outlet.lms", int64(len(l)))
@@ -138,50 +127,47 @@ func report(i chan *store.Bucket, l chan *LM, o chan []*LM) {
 // Its responsibility is to get the ids of buckets for the current time,
 // make empty Buckets, then place the buckets in an inbox to be filled
 // (load the vals into the bucket) and processed.
-func scheduleFetch(inbox chan<- *store.Bucket) {
+func scheduleFetch(inbox chan<- *bucket.Bucket) {
 	for t := range time.Tick(time.Second) {
-		rc := redisPool.Get()
 		// Start working on the new minute right away.
 		if t.Second()%processInterval == 0 {
-			fetch(rc, t, inbox)
+			fetch(t, inbox)
 		}
-		rc.Close()
 	}
 }
 
-func fetch(rc redis.Conn, t time.Time, inbox chan<- *store.Bucket) {
+func fetch(t time.Time, inbox chan<- *bucket.Bucket) {
 	pid, err := utils.LockPartition("librato_outlet", numPartitions, lockTTL)
 	if err != nil {
 		log.Fatal("Unable to lock partition.")
 	}
 	fmt.Printf("at=start_fetch minute=%d\n", t.Minute())
-	mailbox := fmt.Sprintf("librato_outlet.%d", pid)
-	for bucket := range store.ScanBuckets(rc, mailbox) {
+	//TODO(ryandotsmith): Ensure consistent keys are being written.
+	mailbox := fmt.Sprintf("outlet.%d", pid)
+	for bucket := range rs.Scan(mailbox) {
 		inbox <- bucket
 	}
 }
 
-func scheduleConvert(inbox <-chan *store.Bucket, lms chan<- *LM) {
+func scheduleConvert(inbox <-chan *bucket.Bucket, lms chan<- *LM) {
 	for b := range inbox {
-		rc := redisPool.Get()
-		convert(rc, b, lms)
-		rc.Close()
+		convert(b, lms)
 	}
 }
 
-func convert(rc redis.Conn, b *store.Bucket, lms chan<- *LM) {
-	err := b.Get(rc)
+func convert(b *bucket.Bucket, lms chan<- *LM) {
+	err := rs.Get(b)
 	if err != nil {
 		fmt.Printf("error=%s\n", err)
 		return
 	}
 	if len(b.Vals) == 0 {
-		fmt.Printf("at=bucket-no-vals bucket=%s\n", b.Key.Name)
+		fmt.Printf("at=bucket-no-vals bucket=%s\n", b.Id.Name)
 		return
 	}
 	fmt.Printf("at=librato_outlet.process.bucket minute=%d name=%q\n",
-		b.Key.Time.Minute(), b.Key.Name)
-	k := b.Key
+		b.Id.Time.Minute(), b.Id.Name)
+	k := b.Id
 	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".last", Val: ff(b.Last())}
 	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".min", Val: ff(b.Min())}
 	lms <- &LM{Token: k.Token, Time: ft(k.Time), Source: k.Source, Name: k.Name + ".max", Val: ff(b.Max())}
@@ -241,7 +227,7 @@ func post(outbox <-chan []*LM) {
 		}
 
 		sampleMetric := metrics[0]
-		token := store.Token{Id: sampleMetric.Token}
+		token := token.Token{Id: sampleMetric.Token}
 
 		// If a global user/token is provided, use the token for all metrics.
 		// This enable a databaseless librato_outlet.
