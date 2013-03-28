@@ -19,6 +19,10 @@ func (s *MemStore) Health() bool {
 	return true
 }
 
+func (m *MemStore) MaxPartitions() uint64 {
+	return uint64(1)
+}
+
 func (m *MemStore) Scan(partition string) <-chan *bucket.Bucket {
 	m.Lock()
 	buckets := make(chan *bucket.Bucket, 1000)

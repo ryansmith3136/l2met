@@ -43,6 +43,10 @@ func initRedisPool(server, pass string, maxConn int) *redis.Pool {
 	}
 }
 
+func (s *RedisStore) MaxPartitions() uint64 {
+	return s.maxPartitions
+}
+
 func (s *RedisStore) Health() bool {
 	rc := s.redisPool.Get()
 	defer rc.Close()
@@ -130,5 +134,5 @@ func (s *RedisStore) Get(b *bucket.Bucket) error {
 
 func (s *RedisStore) bucketPartition(prefix string, b []byte) string {
 	check := crc64.Checksum(b, PartitionTable)
-	return fmt.Sprintf("%s.%d", prefix, check%s.maxPartitions)
+	return fmt.Sprintf("%s.%d", prefix, check%s.MaxPartitions())
 }

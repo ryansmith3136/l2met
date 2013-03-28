@@ -33,7 +33,6 @@ func LockPartition(ns string, max, ttl uint64) (uint64, error) {
 				return 0, err
 			}
 			if locked {
-				fmt.Printf("Lock acquired. partition=%d\n", p)
 				return p, nil
 			}
 		}
