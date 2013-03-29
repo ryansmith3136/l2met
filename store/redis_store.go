@@ -14,12 +14,12 @@ var PartitionTable = crc64.MakeTable(crc64.ISO)
 
 type RedisStore struct {
 	redisPool     *redis.Pool
-	MaxPartitions uint64
+	maxPartitions uint64
 }
 
 func NewRedisStore(server, pass string, maxPartitions uint64, maxConn int) *RedisStore {
 	return &RedisStore{
-		MaxPartitions: maxPartitions,
+		maxPartitions: maxPartitions,
 		redisPool:     initRedisPool(server, pass, maxConn),
 	}
 }
