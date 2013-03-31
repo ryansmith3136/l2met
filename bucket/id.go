@@ -17,12 +17,13 @@ type Id struct {
 	Token  string
 	Name   string
 	Source string
+	Resolution time.Duration
 	Time   time.Time
 }
 
 func ParseId(s string) (*Id, error) {
 	parts := strings.Split(s, keySep)
-	if len(parts) < 3 {
+	if len(parts) < 4 {
 		return nil, errors.New("bucket: Unable to parse bucket key.")
 	}
 
@@ -31,17 +32,23 @@ func ParseId(s string) (*Id, error) {
 		return nil, err
 	}
 
-	time := time.Unix(t, 0)
+	ts := time.Unix(t, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := strconv.ParseInt(parts[1], 10, 54)
 	if err != nil {
 		return nil, err
 	}
 
 	id := new(Id)
-	id.Time = time
-	id.Token = parts[1]
-	id.Name = parts[2]
-	if len(parts) > 3 {
-		id.Source = parts[3]
+	id.Time = ts
+	id.Resolution = time.Duration(res)
+	id.Token = parts[2]
+	id.Name = parts[3]
+	if len(parts) > 4 {
+		id.Source = parts[5]
 	}
 	return id, nil
 }
@@ -49,6 +56,7 @@ func ParseId(s string) (*Id, error) {
 func (id *Id) String() string {
 	s := ""
 	s += strconv.FormatInt(id.Time.Unix(), 10) + keySep
+	s += strconv.FormatInt(int64(id.Resolution), 10) + keySep
 	s += id.Token + keySep
 	s += id.Name
 	if len(id.Source) > 0 {

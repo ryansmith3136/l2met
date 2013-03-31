@@ -43,7 +43,7 @@ func (r *BucketReader) scan() {
 		*/
 		partition := fmt.Sprintf("outlet.%d", 0)
 		for bucket := range r.Store.Scan(partition) {
-			valid := time.Now().Add(bucket.Resolution)
+			valid := time.Now().Add(bucket.Id.Resolution)
 			if bucket.Id.Time.Before(valid) {
 				r.Inbox <- bucket
 			}

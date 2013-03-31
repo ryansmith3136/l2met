@@ -19,8 +19,6 @@ type Bucket struct {
 	sync.Mutex
 	// The identity of a bucket is used in registers and as keys in redis.
 	Id *Id
-	// time.Minte bucket or time.Second * 5 bucket.
-	Resolution time.Duration
 	// A slice of all the measurements for a bucket.
 	Vals []float64 `json:"vals,omitempty"`
 }
@@ -81,8 +79,8 @@ func NewBucket(token string, rdr *bufio.Reader, opts map[string][]string) <-chan
 				}
 			}
 
-			k := &Id{Token: token, Name: measure, Source: source, Time: t}
-			b := &Bucket{Id: k, Resolution: time.Duration(resolution)}
+			k := &Id{Token: token, Name: measure, Source: source, Time: t, Resolution: time.Duration(resolution)}
+			b := &Bucket{Id: k}
 			b.Vals = append(b.Vals, val)
 			c <- b
 		}
