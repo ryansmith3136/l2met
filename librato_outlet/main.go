@@ -43,7 +43,7 @@ func main() {
 	rdr.NumScanners = concurrency
 	rdr.NumOutlets = concurrency
 	rdr.Store = rs
-	rdr.Interval = time.Second * utils.EnvDuration("LIBRATO_INTERVAL", 10)
+	rdr.Interval = time.Millisecond * 500
 
 	l := outlet.NewLibratoOutlet()
 	l.Reader = rdr
