@@ -9,14 +9,14 @@ import (
 )
 
 type BucketReader struct {
-	Store     store.Store
-	Interval  time.Duration
-	Partition string
-	Ttl       uint64
-	NumOutlets int
+	Store       store.Store
+	Interval    time.Duration
+	Partition   string
+	Ttl         uint64
+	NumOutlets  int
 	NumScanners int
-	Inbox     chan *bucket.Bucket
-	Outbox    chan *bucket.Bucket
+	Inbox       chan *bucket.Bucket
+	Outbox      chan *bucket.Bucket
 }
 
 func NewBucketReader() *BucketReader {
@@ -36,10 +36,10 @@ func (r *BucketReader) Start(out chan *bucket.Bucket) {
 func (r *BucketReader) scan() {
 	for _ = range time.Tick(r.Interval) {
 		/*
-		p, err := utils.LockPartition(r.Partition, r.Store.MaxPartitions(), r.Ttl)
-		if err != nil {
-			continue
-		}
+			p, err := utils.LockPartition(r.Partition, r.Store.MaxPartitions(), r.Ttl)
+			if err != nil {
+				continue
+			}
 		*/
 		partition := fmt.Sprintf("outlet.%d", 0)
 		for bucket := range r.Store.Scan(partition) {

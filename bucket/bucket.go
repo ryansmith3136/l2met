@@ -110,6 +110,9 @@ func (b *Bucket) Count() int {
 }
 
 func (b *Bucket) Sum() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	s := float64(0)
 	for i := range b.Vals {
 		s += b.Vals[i]
@@ -118,6 +121,9 @@ func (b *Bucket) Sum() float64 {
 }
 
 func (b *Bucket) Mean() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	return b.Sum() / float64(b.Count())
 }
 
@@ -133,6 +139,9 @@ func (b *Bucket) Min() float64 {
 }
 
 func (b *Bucket) Median() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	b.Sort()
 	pos := int(math.Ceil(float64(b.Count() / 2)))
 	return b.Vals[pos]
