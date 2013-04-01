@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"l2met/bucket"
 	"l2met/store"
-	//"l2met/utils"
+	"l2met/utils"
 	"time"
 )
 
@@ -35,13 +35,14 @@ func (r *BucketReader) Start(out chan *bucket.Bucket) {
 
 func (r *BucketReader) scan() {
 	for _ = range time.Tick(r.Interval) {
-		/*
-			p, err := utils.LockPartition(r.Partition, r.Store.MaxPartitions(), r.Ttl)
-			if err != nil {
-				continue
-			}
-		*/
-		partition := fmt.Sprintf("outlet.%d", 0)
+		//TODO(ryandotsmith): It is a shame that we have to lock
+		//for each interval. It would be great if we could get a lock
+		//and work for like 1,000 intervals and then relock.
+		p, err := utils.LockPartition(r.Partition, r.Store.MaxPartitions(), r.Ttl)
+		if err != nil {
+			continue
+		}
+		partition := fmt.Sprintf("outlet.%d", p)
 		for bucket := range r.Store.Scan(partition) {
 			valid := time.Now().Add(bucket.Id.Resolution)
 			//TODO(ryandotsmith): This seems ripe for a lua script.
@@ -53,7 +54,7 @@ func (r *BucketReader) scan() {
 				r.Store.Putback(partition, bucket.Id)
 			}
 		}
-		//utils.UnlockPartition(partition)
+		utils.UnlockPartition(partition)
 	}
 }
 func (r *BucketReader) outlet() {
