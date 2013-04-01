@@ -55,6 +55,10 @@ func EnvInt(name string, defaultVal int) int {
 	return defaultVal
 }
 
+func EnvDuration(name string, defaultVal int) time.Duration {
+	return time.Duration(EnvInt(name, defaultVal))
+}
+
 func MeasureI(measurement string, val int64) {
 	m := fmt.Sprintf("%s.%s", appName, measurement)
 	fmt.Printf("measure=%q val=%d\n", m, val)

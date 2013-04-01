@@ -16,12 +16,16 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	rc, err = redis.DialTimeout("tcp", host, time.Second, time.Second, time.Second)
+	rc, err = redis.Dial("tcp", host)
 	if err != nil {
 		log.Fatalf("Locking service is unable to connect to redis. err: %s",
 			err)
 	}
 	rc.Do("AUTH", password)
+}
+
+func UnlockPartition(key string) {
+	rc.Do("DEL", key)
 }
 
 func LockPartition(ns string, max, ttl uint64) (uint64, error) {
