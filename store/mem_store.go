@@ -46,6 +46,10 @@ func (m *MemStore) Get(b *bucket.Bucket) error {
 	return nil
 }
 
+func (m *MemStore) Putback(partition string, id *bucket.Id) error {
+	return nil
+}
+
 func (m *MemStore) Put(b *bucket.Bucket) error {
 	m.Lock()
 	m.m[*b.Id] = b

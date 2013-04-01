@@ -19,6 +19,8 @@ type LogRequest struct {
 	Token string
 	// The body of the HTTP request.
 	Body []byte
+	// Options from the query parameters
+	Opts map[string][]string
 }
 
 type register struct {
@@ -33,11 +35,11 @@ type Receiver struct {
 	// After we pull data from the HTTP requests,
 	// We put the data in the inbox to be processed.
 	Inbox chan *LogRequest
+	// The interval at which things are moved fron the inbox to the outbox
+	TransferTicker *time.Ticker
 	// After we flush our register of buckets, we put the
 	// buckets in this channel to be flushed to redis.
 	Outbox chan *bucket.Bucket
-	// For example, a bucket size can be 1 second or 5 minutes
-	BucketSize time.Duration
 	// Flush buckets from register to redis. Number of seconds.
 	FlushInterval time.Duration
 	// Number of http request bodys to buffer.
@@ -60,11 +62,11 @@ func NewReceiver() *Receiver {
 	return r
 }
 
-func (r *Receiver) Receive(token string, b []byte) {
-	r.Inbox <- &LogRequest{token, b}
+func (r *Receiver) Receive(token string, b []byte, opts map[string][]string) {
+	r.Inbox <- &LogRequest{token, b, opts}
 }
 
-func (r *Receiver) Start() {
+func (r *Receiver) Start(tick time.Duration) {
 	// Parsing the log data can be expensive. Make use
 	// of parallelism.
 	for i := 0; i < r.NumAcceptors; i++ {
@@ -74,16 +76,25 @@ func (r *Receiver) Start() {
 	for i := 0; i < r.NumOutlets; i++ {
 		go r.Outlet()
 	}
+	r.TransferTicker = time.NewTicker(tick)
 	// The transfer is not a concurrent process.
 	// It removes buckets from the register to the outbox.
 	go r.Transfer()
-	go r.report()
+	//go r.report()
+}
+
+func (r *Receiver) Stop() {
+	r.TransferTicker.Stop()
+	// We sleep to give our transfer routine time to finish.
+	time.Sleep(r.FlushInterval)
+	close(r.Inbox)
+	close(r.Outbox)
 }
 
 func (r *Receiver) Accept() {
 	for lreq := range r.Inbox {
 		rdr := bufio.NewReader(bytes.NewReader(lreq.Body))
-		for bucket := range bucket.NewBucket(lreq.Token, rdr, r.BucketSize) {
+		for bucket := range bucket.NewBucket(lreq.Token, rdr, lreq.Opts) {
 			r.Register.Lock()
 			k := *bucket.Id
 			_, present := r.Register.m[k]
@@ -98,7 +109,7 @@ func (r *Receiver) Accept() {
 }
 
 func (r *Receiver) Transfer() {
-	for _ = range time.Tick(r.FlushInterval) {
+	for _ = range r.TransferTicker.C {
 		for k := range r.Register.m {
 			r.Register.Lock()
 			if m, ok := r.Register.m[k]; ok {

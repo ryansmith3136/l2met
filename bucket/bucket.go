@@ -23,7 +23,8 @@ type Bucket struct {
 	Vals []float64 `json:"vals,omitempty"`
 }
 
-func NewBucket(token string, rdr *bufio.Reader, bSize time.Duration) <-chan *Bucket {
+//TODO(ryandotsmith): NewBucket should be broken up. This func is too big.
+func NewBucket(token string, rdr *bufio.Reader, opts map[string][]string) <-chan *Bucket {
 	//TODO(ryandotsmith): Can we eliminate the magical number?
 	buckets := make(chan *Bucket, 10000)
 	go func(c chan<- *Bucket) {
@@ -58,7 +59,16 @@ func NewBucket(token string, rdr *bufio.Reader, bSize time.Duration) <-chan *Buc
 				fmt.Printf("at=time-error error=%s\n", err)
 				continue
 			}
-			t = utils.RoundTime(t, bSize)
+
+			resTmp, ok := opts["bucket-size"]
+			if !ok {
+				resTmp = []string{"60000"}
+			}
+			resolution, err := strconv.Atoi(resTmp[0])
+			if err != nil {
+				continue
+			}
+			t = utils.RoundTime(t, time.Millisecond * time.Duration(resolution))
 
 			val := float64(1)
 			tmpVal, present := d["val"]
@@ -69,7 +79,7 @@ func NewBucket(token string, rdr *bufio.Reader, bSize time.Duration) <-chan *Buc
 				}
 			}
 
-			k := &Id{Token: token, Name: measure, Source: source, Time: t}
+			k := &Id{Token: token, Name: measure, Source: source, Time: t, Resolution: time.Duration(resolution)}
 			b := &Bucket{Id: k}
 			b.Vals = append(b.Vals, val)
 			c <- b
@@ -98,6 +108,9 @@ func (b *Bucket) Count() int {
 }
 
 func (b *Bucket) Sum() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	s := float64(0)
 	for i := range b.Vals {
 		s += b.Vals[i]
@@ -106,6 +119,9 @@ func (b *Bucket) Sum() float64 {
 }
 
 func (b *Bucket) Mean() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	return b.Sum() / float64(b.Count())
 }
 
@@ -121,6 +137,9 @@ func (b *Bucket) Min() float64 {
 }
 
 func (b *Bucket) Median() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	b.Sort()
 	pos := int(math.Ceil(float64(b.Count() / 2)))
 	return b.Vals[pos]
