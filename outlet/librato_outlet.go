@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"l2met/bucket"
-	"l2met/token"
 	"l2met/utils"
 	"net/http"
 	"strconv"
@@ -21,7 +20,8 @@ type LibratoPayload struct {
 	Time   int64  `json:"measure_time"`
 	Val    string `json:"value"`
 	Source string `json:"source,omitempty"`
-	Token  string `json:",omitempty"`
+	User string `json:",omitempty"`
+	Pass string `json:",omitempty"`
 }
 
 type LibratoRequest struct {
@@ -49,8 +49,6 @@ type LibratoOutlet struct {
 	NumConverters int
 	Reader        Reader
 	Retries       int
-	User          string
-	Pass          string
 }
 
 func NewLibratoOutlet() *LibratoOutlet {
@@ -78,15 +76,15 @@ func (l *LibratoOutlet) convert() {
 			fmt.Printf("at=bucket-no-vals bucket=%s\n", bucket.Id.Name)
 			continue
 		}
-		l.Conversions <- &LibratoPayload{Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".last", Val: ff(bucket.Last())}
-		l.Conversions <- &LibratoPayload{Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".min", Val: ff(bucket.Min())}
-		l.Conversions <- &LibratoPayload{Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".max", Val: ff(bucket.Max())}
-		l.Conversions <- &LibratoPayload{Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".mean", Val: ff(bucket.Mean())}
-		l.Conversions <- &LibratoPayload{Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".median", Val: ff(bucket.Median())}
-		l.Conversions <- &LibratoPayload{Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".perc95", Val: ff(bucket.P95())}
-		l.Conversions <- &LibratoPayload{Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".perc99", Val: ff(bucket.P99())}
-		l.Conversions <- &LibratoPayload{Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".count", Val: fi(bucket.Count())}
-		l.Conversions <- &LibratoPayload{Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".sum", Val: ff(bucket.Sum())}
+		l.Conversions <- &LibratoPayload{User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".last", Val: ff(bucket.Last())}
+		l.Conversions <- &LibratoPayload{User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".min", Val: ff(bucket.Min())}
+		l.Conversions <- &LibratoPayload{User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".max", Val: ff(bucket.Max())}
+		l.Conversions <- &LibratoPayload{User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".mean", Val: ff(bucket.Mean())}
+		l.Conversions <- &LibratoPayload{User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".median", Val: ff(bucket.Median())}
+		l.Conversions <- &LibratoPayload{User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".perc95", Val: ff(bucket.P95())}
+		l.Conversions <- &LibratoPayload{User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".perc99", Val: ff(bucket.P99())}
+		l.Conversions <- &LibratoPayload{User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".count", Val: fi(bucket.Count())}
+		l.Conversions <- &LibratoPayload{User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".sum", Val: ff(bucket.Sum())}
 		delay := time.Now().Unix() - bucket.Id.Time.Unix()
 		fmt.Printf("measure.bucket.conversion.delay=%d\n", delay)
 	}
@@ -105,16 +103,17 @@ func (l *LibratoOutlet) batch() {
 				delete(batchMap, k)
 			}
 		case payload := <-l.Conversions:
-			_, present := batchMap[payload.Token]
+			k := payload.User + payload.Pass
+			_, present := batchMap[k]
 			if !present {
-				batchMap[payload.Token] = make([]*LibratoPayload, 1, 300)
-				batchMap[payload.Token][0] = payload
+				batchMap[k] = make([]*LibratoPayload, 1, 300)
+				batchMap[k][0] = payload
 			} else {
-				batchMap[payload.Token] = append(batchMap[payload.Token], payload)
+				batchMap[k] = append(batchMap[k], payload)
 			}
-			if len(batchMap[payload.Token]) == cap(batchMap[payload.Token]) {
-				l.Outbox <- batchMap[payload.Token]
-				delete(batchMap, payload.Token)
+			if len(batchMap[k]) == cap(batchMap[k]) {
+				l.Outbox <- batchMap[k]
+				delete(batchMap, k)
 			}
 		}
 	}
@@ -128,17 +127,6 @@ func (l *LibratoOutlet) outlet() {
 		}
 
 		sample := payloads[0]
-		tok := &token.Token{Id: sample.Token}
-
-		// If a global user/token is provided, use the token for all metrics.
-		// This enable a databaseless librato_outlet.
-		if len(l.User) == 0 || len(l.Pass) == 0 {
-			tok.Get()
-		} else {
-			tok.User = l.User
-			tok.Pass = l.Pass
-		}
-
 		reqBody := new(LibratoRequest)
 		reqBody.Gauges = payloads
 		j, err := json.Marshal(reqBody)
@@ -147,13 +135,13 @@ func (l *LibratoOutlet) outlet() {
 			continue
 		}
 
-		l.postWithRetry(tok, bytes.NewBuffer(j))
+		l.postWithRetry(sample.User, sample.Pass, bytes.NewBuffer(j))
 	}
 }
 
-func (l *LibratoOutlet) postWithRetry(tok *token.Token, body *bytes.Buffer) error {
+func (l *LibratoOutlet) postWithRetry(user, pass string, body *bytes.Buffer) error {
 	for i := 0; i <= l.Retries; i++ {
-		if err := l.post(tok, body); err != nil {
+		if err := l.post(user, pass, body); err != nil {
 			fmt.Printf("error=%s attempt=%d\n", err, i)
 			continue
 			if i == l.Retries {
@@ -165,14 +153,14 @@ func (l *LibratoOutlet) postWithRetry(tok *token.Token, body *bytes.Buffer) erro
 	panic("impossible")
 }
 
-func (l *LibratoOutlet) post(tok *token.Token, body *bytes.Buffer) error {
+func (l *LibratoOutlet) post(user, pass string, body *bytes.Buffer) error {
 	defer utils.MeasureT("librato-post", time.Now())
 	req, err := http.NewRequest("POST", libratoUrl, body)
 	if err != nil {
 		return err
 	}
 	req.Header.Add("Content-Type", "application/json")
-	req.SetBasicAuth(tok.User, tok.Pass)
+	req.SetBasicAuth(user, pass)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

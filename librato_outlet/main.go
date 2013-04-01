@@ -50,8 +50,6 @@ func main() {
 	l.NumOutlets = concurrency
 	l.NumConverters = concurrency
 	l.Retries = 2
-	l.User = utils.EnvString("LIBRATO_USER", "")
-	l.Pass = utils.EnvString("LIBRATO_TOKEN", "")
 	l.Start()
 	select {}
 }

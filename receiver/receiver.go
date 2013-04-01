@@ -16,7 +16,8 @@ import (
 // this struct to hold the data that is passed inbetween routines.
 type LogRequest struct {
 	// This is pulled from the password field of the HTTP request.
-	Token string
+	User string
+	Pass string
 	// The body of the HTTP request.
 	Body []byte
 	// Options from the query parameters
@@ -62,8 +63,8 @@ func NewReceiver() *Receiver {
 	return r
 }
 
-func (r *Receiver) Receive(token string, b []byte, opts map[string][]string) {
-	r.Inbox <- &LogRequest{token, b, opts}
+func (r *Receiver) Receive(u, p string, b []byte, opts map[string][]string) {
+	r.Inbox <- &LogRequest{u, p, b, opts}
 }
 
 func (r *Receiver) Start(tick time.Duration) {
@@ -94,7 +95,7 @@ func (r *Receiver) Stop() {
 func (r *Receiver) Accept() {
 	for lreq := range r.Inbox {
 		rdr := bufio.NewReader(bytes.NewReader(lreq.Body))
-		for bucket := range bucket.NewBucket(lreq.Token, rdr, lreq.Opts) {
+		for bucket := range bucket.NewBucket(lreq.User, lreq.Pass, rdr, lreq.Opts) {
 			r.Register.Lock()
 			k := *bucket.Id
 			_, present := r.Register.m[k]

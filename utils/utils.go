@@ -102,26 +102,26 @@ func ParseRedisUrl() (string, string, error) {
 	return u.Host, password, nil
 }
 
-func ParseToken(r *http.Request) (string, error) {
+func ParseAuth(r *http.Request) (string, string, error) {
 	header, ok := r.Header["Authorization"]
 	if !ok {
-		return "", errors.New("Authorization header not set.")
+		return "", "", errors.New("Authorization header not set.")
 	}
 
 	auth := strings.SplitN(header[0], " ", 2)
 	if len(auth) != 2 {
-		return "", errors.New("Malformed header.")
+		return "", "", errors.New("Malformed header.")
 	}
 
 	userPass, err := base64.StdEncoding.DecodeString(auth[1])
 	if err != nil {
-		return "", errors.New("Malformed encoding.")
+		return "", "", errors.New("Malformed encoding.")
 	}
 
 	parts := strings.Split(string(userPass), ":")
 	if len(parts) != 2 {
-		return "", errors.New("Password not supplied.")
+		return "", "", errors.New("Password not supplied.")
 	}
 
-	return parts[1], nil
+	return parts[0], parts[1], nil
 }

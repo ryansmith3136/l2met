@@ -14,7 +14,8 @@ import (
 const keySep = "→"
 
 type Id struct {
-	Token  string
+	User string
+	Pass string
 	Name   string
 	Source string
 	Resolution time.Duration

@@ -24,7 +24,7 @@ type Bucket struct {
 }
 
 //TODO(ryandotsmith): NewBucket should be broken up. This func is too big.
-func NewBucket(token string, rdr *bufio.Reader, opts map[string][]string) <-chan *Bucket {
+func NewBucket(user, pass string, rdr *bufio.Reader, opts map[string][]string) <-chan *Bucket {
 	//TODO(ryandotsmith): Can we eliminate the magical number?
 	buckets := make(chan *Bucket, 10000)
 	go func(c chan<- *Bucket) {
