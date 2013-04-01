@@ -44,8 +44,13 @@ func (r *BucketReader) scan() {
 		partition := fmt.Sprintf("outlet.%d", 0)
 		for bucket := range r.Store.Scan(partition) {
 			valid := time.Now().Add(bucket.Id.Resolution)
+			//TODO(ryandotsmith): This seems ripe for a lua script.
+			//The goal would to be receive data from scan that is sure
+			//to be valid.
 			if bucket.Id.Time.Before(valid) {
 				r.Inbox <- bucket
+			} else {
+				r.Store.Putback(partition, bucket.Id)
 			}
 		}
 		//utils.UnlockPartition(partition)

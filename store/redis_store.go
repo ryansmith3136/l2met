@@ -86,6 +86,14 @@ func (s *RedisStore) Scan(partition string) <-chan *bucket.Bucket {
 	return retBuckets
 }
 
+func (s *RedisStore) Putback(partition string, id *bucket.Id) error {
+	defer utils.MeasureT("bucket.putback", time.Now())
+	rc := s.redisPool.Get()
+	defer rc.Close()
+	_, err := rc.Do("SADD", partition, id.String())
+	return err
+}
+
 func (s *RedisStore) Put(b *bucket.Bucket) error {
 	defer utils.MeasureT("bucket.put", time.Now())
 
