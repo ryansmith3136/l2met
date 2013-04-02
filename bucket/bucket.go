@@ -10,6 +10,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -24,7 +25,7 @@ type Bucket struct {
 }
 
 //TODO(ryandotsmith): NewBucket should be broken up. This func is too big.
-func NewBucket(token string, rdr *bufio.Reader, opts map[string][]string) <-chan *Bucket {
+func NewBucket(tok string, rdr *bufio.Reader, opts map[string][]string) <-chan *Bucket {
 	//TODO(ryandotsmith): Can we eliminate the magical number?
 	buckets := make(chan *Bucket, 10000)
 	go func(c chan<- *Bucket) {
@@ -39,50 +40,64 @@ func NewBucket(token string, rdr *bufio.Reader, opts map[string][]string) <-chan
 				fmt.Printf("at=logplex-error err=%s\n", err)
 				return
 			}
-			d, err := encoding.ParseMsgData(logLine.Msg)
+
+			logData, err := encoding.ParseMsgData(logLine.Msg)
 			if err != nil {
 				continue
 			}
 
-			measure, ok := d["measure"]
-			if !ok {
-				continue
-			}
-
-			source := d["source"]
-
-			t, err := logLine.Time()
+			ts, err := logLine.Time()
 			if err != nil {
 				fmt.Printf("at=time-error error=%s\n", err)
 				continue
 			}
 
-			resTmp, ok := opts["resolution"]
+			resQuery, ok := opts["resolution"]
 			if !ok {
-				resTmp = []string{"60000"}
+				resQuery = []string{"60000"}
 			}
-			resolution, err := strconv.Atoi(resTmp[0])
+			resTmp, err := strconv.Atoi(resQuery[0])
 			if err != nil {
 				continue
 			}
-			t = utils.RoundTime(t, time.Millisecond*time.Duration(resolution))
+			res := time.Duration(resTmp)
+			ts = utils.RoundTime(ts, time.Millisecond*res)
+			src := logData["source"]
 
-			val := float64(1)
-			tmpVal, present := d["val"]
-			if present {
-				v, err := strconv.ParseFloat(tmpVal, 64)
-				if err == nil {
-					val = v
+			for k, v := range logData {
+				switch k {
+				case "measure":
+					val := parseVal(logData["val"])
+					id := &Id{ts, res, tok, v, src}
+					bucket := &Bucket{Id: id}
+					bucket.Vals = []float64{val}
+					c <- bucket
+				default:
+					if !strings.HasPrefix(k, "measure.") {
+						break
+					}
+					name := k[8:]
+					val := parseVal(v)
+					id := &Id{ts, res, tok, name, src}
+					bucket := &Bucket{Id: id}
+					bucket.Vals = []float64{val}
+					c <- bucket
 				}
 			}
-
-			k := &Id{Token: token, Name: measure, Source: source, Time: t, Resolution: time.Duration(resolution)}
-			b := &Bucket{Id: k}
-			b.Vals = append(b.Vals, val)
-			c <- b
 		}
 	}(buckets)
 	return buckets
+}
+
+func parseVal(s string) float64 {
+	val := float64(1)
+	if len(s) > 0 {
+		v, err := strconv.ParseFloat(s, 64)
+		if err == nil {
+			val = v
+		}
+	}
+	return val
 }
 
 // Adding bucket a to bucket b copies the vals of bucket b and
