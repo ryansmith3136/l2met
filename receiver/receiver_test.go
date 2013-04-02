@@ -116,3 +116,36 @@ func TestReceiveMultiMetrics(t *testing.T) {
 		t.Errorf("expected=%d actual=%d\n", expectedSum, actualSum)
 	}
 }
+
+func TestReceiveRouter(t *testing.T) {
+	store, recv := makeReceiver()
+	recv.FlushInterval = time.Millisecond
+	recv.Start()
+	defer recv.Stop()
+
+	opts := map[string][]string{"resolution": []string{"1000"}}
+	msg := []byte("112 <190>1 2013-03-27T00:00:01+00:00 router token shuttle - - host=test.l2met.net service=10ms connect=10ms bytes=45")
+	recv.Receive("123", msg, opts)
+	time.Sleep(recv.FlushInterval * 2)
+
+	var buckets []*bucket.Bucket
+	for b := range store.Scan("not important") {
+		buckets = append(buckets, b)
+	}
+
+	expectedLength := 3
+	actualLength := len(buckets)
+	if actualLength != expectedLength {
+		t.Errorf("expected=%d actual=%d\n", expectedLength, actualLength)
+	}
+
+	//the log line above has two measurements with values of 10.
+	actualSum := float64(0)
+	for i := range buckets {
+		actualSum += buckets[i].Sum()
+	}
+	expectedSum := float64(65)
+	if actualSum != expectedSum {
+		t.Errorf("expected=%d actual=%d\n", expectedSum, actualSum)
+	}
+}

@@ -1,3 +1,7 @@
+## 0.4 2013-04-02
+
+* [Heroku Router](https://github.com/ryandotsmith/l2met#heroku-router)
+
 ## 0.3 2013-04-02
 
 * [Multi-metrics](https://github.com/ryandotsmith/l2met#multi-metrics)

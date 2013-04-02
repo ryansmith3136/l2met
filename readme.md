@@ -36,6 +36,7 @@ Metrics Produced:
 
 * [High resolution buckets](#high-resolution-buckets)
 * [Multi-metrics](#multi-metrics)
+* [Heroku Router](#heroku-router)
 * Librato Outlet
 * Graphite Outlet
 
@@ -63,6 +64,24 @@ bucket1 = {name=hello, vals=[10], ...}
 bucket2 = {name=world vals=[10], ...}
 
 Thus you can measure multiple things provided the key is prefixed with `measure.`.
+
+### Heroku Router
+
+The Heroku router has a log line convention described [here](https://devcenter.heroku.com/articles/http-routing#heroku-router-log-format)
+
+This feature will read the User field in the syslog packet looking for the string "router." If a match is had, we will parse the structured data and massage it to match the l2met convention. Furthermore, we will prefix the measurement name with the parsed host field in the log line.
+
+Example:
+
+```
+path=/logs host=test.l2met.net connect=1ms service=2ms bytes=0
+```
+
+Would produce the bucket:
+
+bucket1 = {name="test.l2met.net.connect" vals=[1]}
+bucket2 = {name="test.l2met.net.service" vals=[2]}
+bucket3 = {name="test.l2met.net.bytes" vals=[0]}
 
 ## Setup
 
