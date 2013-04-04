@@ -8,6 +8,7 @@ import (
 	"l2met/encoding"
 	"l2met/utils"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -79,21 +80,21 @@ func NewBucket(tok string, rdr *bufio.Reader, opts map[string][]string) <-chan *
 					src = logData["host"]
 				}
 				if len(logData["connect"]) > 0 {
-					logData[prefix+"connect"] = strings.Replace(logData["connect"], "ms", "", -1)
+					logData[prefix+"connect"] = logData["connect"]
 				}
 				if len(logData["service"]) > 0 {
-					logData[prefix+"service"] = strings.Replace(logData["service"], "ms", "", -1)
+					logData[prefix+"service"] = logData["service"]
 				}
 				if len(logData["bytes"]) > 0 {
-					logData[prefix+"bytes"] = logData["bytes"]
+					logData[prefix+"bytes"] = logData["bytes"] + "bytes"
 				}
 			}
 
 			for k, v := range logData {
 				switch k {
 				case "measure":
-					val := parseVal(logData["val"])
-					id := &Id{ts, res, tok, v, src}
+					units, val := parseVal(logData["val"])
+					id := &Id{ts, res, tok, v, units, src}
 					bucket := &Bucket{Id: id}
 					bucket.Vals = []float64{val}
 					c <- bucket
@@ -102,8 +103,8 @@ func NewBucket(tok string, rdr *bufio.Reader, opts map[string][]string) <-chan *
 						break
 					}
 					name := k[8:] // len("measure.") == 8
-					val := parseVal(v)
-					id := &Id{ts, res, tok, name, src}
+					units, val := parseVal(v)
+					id := &Id{ts, res, tok, name, units, src}
 					bucket := &Bucket{Id: id}
 					bucket.Vals = []float64{val}
 					c <- bucket
@@ -114,17 +115,31 @@ func NewBucket(tok string, rdr *bufio.Reader, opts map[string][]string) <-chan *
 	return buckets
 }
 
+var (
+	unitsPat = regexp.MustCompile(`[a-zA-Z]+`)
+	valPat   = regexp.MustCompile(`\d+`)
+)
+
 // If we can parse a number from the string,
 // we will return that number. Return 1 otherwise.
-func parseVal(s string) float64 {
-	val := float64(1)
-	if len(s) > 0 {
-		v, err := strconv.ParseFloat(s, 64)
+func parseVal(s string) (string, float64) {
+	var units string
+	var val float64
+
+	units = unitsPat.FindString(s)
+	if len(units) == 0 {
+		units = "u"
+	}
+
+	val = float64(1)
+	tmpVal := valPat.FindString(s)
+	if len(tmpVal) > 0 {
+		v, err := strconv.ParseFloat(tmpVal, 64)
 		if err == nil {
 			val = v
 		}
 	}
-	return val
+	return units, val
 }
 
 // Adding bucket a to bucket b copies the vals of bucket b and

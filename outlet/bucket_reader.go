@@ -11,16 +11,17 @@ import (
 type BucketReader struct {
 	Store       store.Store
 	Interval    time.Duration
-	Partition   string
 	Ttl         uint64
 	NumOutlets  int
 	NumScanners int
 	Inbox       chan *bucket.Bucket
 	Outbox      chan *bucket.Bucket
+	Partition   string
 }
 
 func NewBucketReader(mi int) *BucketReader {
 	rdr := new(BucketReader)
+	rdr.Partition = "bucket-reader"
 	rdr.Inbox = make(chan *bucket.Bucket, mi)
 	return rdr
 }
@@ -51,10 +52,12 @@ func (r *BucketReader) scan() {
 			if bucket.Id.Time.Before(valid) {
 				r.Inbox <- bucket
 			} else {
-				r.Store.Putback(partition, bucket.Id)
+				if err := r.Store.Putback(partition, bucket.Id); err != nil {
+					fmt.Printf("error=%s\n", err)
+				}
 			}
 		}
-		utils.UnlockPartition(fmt.Sprintf("bucket-reader.%d", p))
+		utils.UnlockPartition(fmt.Sprintf("%s.%d", r.Partition, p))
 	}
 }
 func (r *BucketReader) outlet() {

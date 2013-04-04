@@ -2,10 +2,10 @@ package bucket
 
 import (
 	"errors"
+	"l2met/utils"
 	"strconv"
 	"strings"
 	"time"
-	"l2met/utils"
 )
 
 // TODO(ryandotsmith): This is an awful hack.
@@ -19,12 +19,13 @@ type Id struct {
 	Resolution time.Duration
 	Token      string
 	Name       string
+	Units      string
 	Source     string
 }
 
 func ParseId(s string) (*Id, error) {
 	parts := strings.Split(s, keySep)
-	if len(parts) < 4 {
+	if len(parts) < 5 {
 		return nil, errors.New("bucket: Unable to parse bucket key.")
 	}
 
@@ -48,8 +49,9 @@ func ParseId(s string) (*Id, error) {
 	id.Resolution = time.Duration(res)
 	id.Token = parts[2]
 	id.Name = parts[3]
-	if len(parts) > 4 {
-		id.Source = parts[4]
+	id.Units = parts[4]
+	if len(parts) > 5 {
+		id.Source = parts[5]
 	}
 	return id, nil
 }
@@ -59,7 +61,8 @@ func (id *Id) String() string {
 	s += strconv.FormatInt(id.Time.Unix(), 10) + keySep
 	s += strconv.FormatInt(int64(id.Resolution), 10) + keySep
 	s += id.Token + keySep
-	s += id.Name
+	s += id.Name + keySep
+	s += id.Units
 	if len(id.Source) > 0 {
 		s += keySep + id.Source
 	}

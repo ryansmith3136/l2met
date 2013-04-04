@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseId(t *testing.T) {
-	id := Id{time.Now(), time.Minute, "token", "name", "source"}
+	id := Id{time.Now(), time.Minute, "token", "name", "units", "source"}
 	expected, err := ParseId(id.String())
 	if err != nil {
 		t.FailNow()
@@ -31,7 +31,7 @@ func TestParseId(t *testing.T) {
 }
 
 func TestParseIdWithoutSource(t *testing.T) {
-	id := Id{time.Now(), time.Minute, "token", "name", ""}
+	id := Id{time.Now(), time.Minute, "token", "name", "units", ""}
 	expected, err := ParseId(id.String())
 	if err != nil {
 		t.FailNow()
@@ -75,7 +75,7 @@ func TestDelaySeconds(t *testing.T) {
 func TestDelayFiveSeconds(t *testing.T) {
 	base := time.Now()
 	id := Id{Resolution: (time.Second * 5), Time: base}
-	actualDelay := id.Delay(base.Add(time.Second * 7))
+	actualDelay := id.Delay(base.Add(time.Second * 10))
 	expectedDelay := int64(2)
 
 	if expectedDelay != actualDelay {
