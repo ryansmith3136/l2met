@@ -117,7 +117,7 @@ func NewBucket(tok string, rdr *bufio.Reader, opts map[string][]string) <-chan *
 
 var (
 	unitsPat = regexp.MustCompile(`[a-zA-Z]+`)
-	valPat   = regexp.MustCompile(`\d+`)
+	valPat   = regexp.MustCompile(`[^a-zA-z]+`)
 )
 
 // If we can parse a number from the string,
