@@ -10,6 +10,7 @@ import (
 	"l2met/token"
 	"l2met/utils"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -26,7 +27,8 @@ type LibratoPayload struct {
 	Time   int64              `json:"measure_time"`
 	Val    string             `json:"value"`
 	Source string             `json:"source,omitempty"`
-	Token  string             `json:",omitempty"`
+	User   string             `json:",omitempty"`
+	Pass   string             `json:",omitempty"`
 	Attr   *LibratoAttributes `json:"attributes,omitempty"`
 }
 
@@ -97,15 +99,15 @@ func (l *LibratoOutlet) convert() {
 		//We need a succinct way to building payloads.
 		countAttr := &LibratoAttributes{Min: 0, Units: "count"}
 		attrs := &LibratoAttributes{Min: 0, Units: bucket.Id.Units}
-		l.Conversions <- &LibratoPayload{Attr: attrs, Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".last", Val: ff(bucket.Last())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".min", Val: ff(bucket.Min())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".max", Val: ff(bucket.Max())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".mean", Val: ff(bucket.Mean())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".median", Val: ff(bucket.Median())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".perc95", Val: ff(bucket.P95())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".perc99", Val: ff(bucket.P99())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".sum", Val: ff(bucket.Sum())}
-		l.Conversions <- &LibratoPayload{Attr: countAttr, Token: bucket.Id.Token, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".count", Val: fi(bucket.Count())}
+		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".last", Val: ff(bucket.Last())}
+		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".min", Val: ff(bucket.Min())}
+		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".max", Val: ff(bucket.Max())}
+		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".mean", Val: ff(bucket.Mean())}
+		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".median", Val: ff(bucket.Median())}
+		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".perc95", Val: ff(bucket.P95())}
+		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".perc99", Val: ff(bucket.P99())}
+		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".sum", Val: ff(bucket.Sum())}
+		l.Conversions <- &LibratoPayload{Attr: countAttr, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".count", Val: fi(bucket.Count())}
 		fmt.Printf("measure.bucket.conversion.delay=%d\n", bucket.Id.Delay(time.Now()))
 	}
 }
@@ -123,16 +125,17 @@ func (l *LibratoOutlet) batch() {
 				delete(batchMap, k)
 			}
 		case payload := <-l.Conversions:
-			_, present := batchMap[payload.Token]
+			index := payload.User + ":" + payload.Pass
+			_, present := batchMap[index]
 			if !present {
-				batchMap[payload.Token] = make([]*LibratoPayload, 1, 300)
-				batchMap[payload.Token][0] = payload
+				batchMap[index] = make([]*LibratoPayload, 1, 300)
+				batchMap[index][0] = payload
 			} else {
-				batchMap[payload.Token] = append(batchMap[payload.Token], payload)
+				batchMap[index] = append(batchMap[index], payload)
 			}
-			if len(batchMap[payload.Token]) == cap(batchMap[payload.Token]) {
-				l.Outbox <- batchMap[payload.Token]
-				delete(batchMap, payload.Token)
+			if len(batchMap[index]) == cap(batchMap[index]) {
+				l.Outbox <- batchMap[index]
+				delete(batchMap, index)
 			}
 		}
 	}
@@ -145,16 +148,25 @@ func (l *LibratoOutlet) outlet() {
 			continue
 		}
 
+		// all buckets in the payload are from the same token/account
+		// we can get the user/pass from any entry in the payload
 		sample := payloads[0]
-		tok := &token.Token{Id: sample.Token}
+		tok := new(token.Token)
 
+		switch {
 		// If a global user/token is provided, use the token for all metrics.
 		// This enable a databaseless librato_outlet.
-		if len(l.User) == 0 || len(l.Pass) == 0 {
-			tok.Get()
-		} else {
+		case len(l.User) > 0 && len(l.Pass) > 0:
 			tok.User = l.User
 			tok.Pass = l.Pass
+		// If user is l2met find credentials from postgres
+		case sample.User == "l2met":
+			tok.Id = l.Pass
+			tok.Get()
+		// you're using librato credentials
+		default:
+			tok.User = sample.User
+			tok.Pass = sample.Pass
 		}
 
 		reqBody := new(LibratoRequest)
@@ -191,7 +203,11 @@ func (l *LibratoOutlet) post(tok *token.Token, body *bytes.Buffer) error {
 		return err
 	}
 	req.Header.Add("Content-Type", "application/json")
-	req.SetBasicAuth(tok.User, tok.Pass)
+	escapedUser, err := url.QueryUnescape(tok.User)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(escapedUser, tok.Pass)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

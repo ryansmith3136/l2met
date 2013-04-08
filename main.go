@@ -70,8 +70,9 @@ func recvLogs(w http.ResponseWriter, r *http.Request, recv *receiver.Receiver) {
 		http.Error(w, "Invalid Request", 400)
 		return
 	}
-	token, err := utils.ParseToken(r)
+	user, pass, err := utils.ParseAuth(r)
 	if err != nil {
+		fmt.Printf("auth-error=%s\n", err)
 		http.Error(w, "Invalid Request", 400)
 		return
 	}
@@ -81,5 +82,5 @@ func recvLogs(w http.ResponseWriter, r *http.Request, recv *receiver.Receiver) {
 		http.Error(w, "Invalid Request", 400)
 		return
 	}
-	recv.Receive(token, b, r.URL.Query())
+	recv.Receive(user, pass, b, r.URL.Query())
 }

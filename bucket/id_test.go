@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseId(t *testing.T) {
-	id := Id{time.Now(), time.Minute, "token", "name", "units", "source"}
+	id := Id{time.Now(), time.Minute, "user", "pass", "name", "units", "source"}
 	expected, err := ParseId(id.String())
 	if err != nil {
 		t.FailNow()
@@ -20,8 +20,12 @@ func TestParseId(t *testing.T) {
 		fmt.Printf("expected=%d actual=%d\n", "name", expected.Name)
 		t.FailNow()
 	}
-	if expected.Token != "token" {
-		fmt.Printf("expected=%d actual=%d\n", "token", expected.Token)
+	if expected.User != "user" {
+		fmt.Printf("expected=%d actual=%d\n", "user", expected.User)
+		t.FailNow()
+	}
+	if expected.Pass != "pass" {
+		fmt.Printf("expected=%d actual=%d\n", "pass", expected.Pass)
 		t.FailNow()
 	}
 	if expected.Resolution != time.Minute {
@@ -31,7 +35,7 @@ func TestParseId(t *testing.T) {
 }
 
 func TestParseIdWithoutSource(t *testing.T) {
-	id := Id{time.Now(), time.Minute, "token", "name", "units", ""}
+	id := Id{time.Now(), time.Minute, "user", "pass", "name", "units", ""}
 	expected, err := ParseId(id.String())
 	if err != nil {
 		t.FailNow()
@@ -40,8 +44,12 @@ func TestParseIdWithoutSource(t *testing.T) {
 		fmt.Printf("expected=%d actual=%d\n", "name", expected.Name)
 		t.FailNow()
 	}
-	if expected.Token != "token" {
-		fmt.Printf("expected=%d actual=%d\n", "token", expected.Token)
+	if expected.User != "user" {
+		fmt.Printf("expected=%d actual=%d\n", "user", expected.User)
+		t.FailNow()
+	}
+	if expected.Pass != "pass" {
+		fmt.Printf("expected=%d actual=%d\n", "pass", expected.Pass)
 		t.FailNow()
 	}
 	if expected.Resolution != time.Minute {

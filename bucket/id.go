@@ -17,7 +17,8 @@ const keySep = "→"
 type Id struct {
 	Time       time.Time
 	Resolution time.Duration
-	Token      string
+	User       string
+	Pass       string
 	Name       string
 	Units      string
 	Source     string
@@ -47,11 +48,12 @@ func ParseId(s string) (*Id, error) {
 	id := new(Id)
 	id.Time = ts
 	id.Resolution = time.Duration(res)
-	id.Token = parts[2]
-	id.Name = parts[3]
-	id.Units = parts[4]
-	if len(parts) > 5 {
-		id.Source = parts[5]
+	id.User = parts[2]
+	id.Pass = parts[3]
+	id.Name = parts[4]
+	id.Units = parts[5]
+	if len(parts) > 6 {
+		id.Source = parts[6]
 	}
 	return id, nil
 }
@@ -60,7 +62,8 @@ func (id *Id) String() string {
 	s := ""
 	s += strconv.FormatInt(id.Time.Unix(), 10) + keySep
 	s += strconv.FormatInt(int64(id.Resolution), 10) + keySep
-	s += id.Token + keySep
+	s += id.User + keySep
+	s += id.Pass + keySep
 	s += id.Name + keySep
 	s += id.Units
 	if len(id.Source) > 0 {

@@ -28,7 +28,7 @@ func TestReceive(t *testing.T) {
 
 	opts := map[string][]string{}
 	msg := []byte("81 <190>1 2013-03-27T20:02:24+00:00 hostname token shuttle - - measure=hello val=99\n")
-	recv.Receive("123", msg, opts)
+	recv.Receive("user", "pass", msg, opts)
 	time.Sleep(recv.FlushInterval * 2)
 
 	var buckets []*bucket.Bucket
@@ -61,7 +61,7 @@ func TestReceiveOpts(t *testing.T) {
 
 	opts := map[string][]string{"resolution": []string{"1"}}
 	msg := []byte("81 <190>1 2013-03-27T00:00:01+00:00 hostname token shuttle - - measure=hello val=99\n")
-	recv.Receive("123", msg, opts)
+	recv.Receive("user", "pass", msg, opts)
 	time.Sleep(recv.FlushInterval * 2)
 
 	var buckets []*bucket.Bucket
@@ -96,7 +96,7 @@ func TestReceiveMultiMetrics(t *testing.T) {
 
 	opts := map[string][]string{"resolution": []string{"1000"}}
 	msg := []byte("95 <190>1 2013-03-27T00:00:01+00:00 hostname token shuttle - - measure=hello val=10 measure.db=10\n")
-	recv.Receive("123", msg, opts)
+	recv.Receive("user", "pass", msg, opts)
 	time.Sleep(recv.FlushInterval * 2)
 
 	var buckets []*bucket.Bucket
@@ -129,7 +129,7 @@ func TestReceiveRouter(t *testing.T) {
 
 	opts := map[string][]string{"resolution": []string{"1000"}}
 	msg := []byte("112 <190>1 2013-03-27T00:00:01+00:00 shuttle router token - - host=test.l2met.net service=10ms connect=10ms bytes=45")
-	recv.Receive("123", msg, opts)
+	recv.Receive("user", "pass", msg, opts)
 	time.Sleep(recv.FlushInterval * 2)
 
 	//There are 3 measurements in our logline.

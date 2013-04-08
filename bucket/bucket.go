@@ -26,7 +26,7 @@ type Bucket struct {
 }
 
 //TODO(ryandotsmith): NewBucket should be broken up. This func is too big.
-func NewBucket(tok string, rdr *bufio.Reader, opts map[string][]string) <-chan *Bucket {
+func NewBucket(user, pass string, rdr *bufio.Reader, opts map[string][]string) <-chan *Bucket {
 	//TODO(ryandotsmith): Can we eliminate the magical number?
 	buckets := make(chan *Bucket, 10000)
 	go func(c chan<- *Bucket) {
@@ -94,7 +94,7 @@ func NewBucket(tok string, rdr *bufio.Reader, opts map[string][]string) <-chan *
 				switch k {
 				case "measure":
 					units, val := parseVal(logData["val"])
-					id := &Id{ts, res, tok, v, units, src}
+					id := &Id{ts, res, user, pass, v, units, src}
 					bucket := &Bucket{Id: id}
 					bucket.Vals = []float64{val}
 					c <- bucket
@@ -104,7 +104,7 @@ func NewBucket(tok string, rdr *bufio.Reader, opts map[string][]string) <-chan *
 					}
 					name := k[8:] // len("measure.") == 8
 					units, val := parseVal(v)
-					id := &Id{ts, res, tok, name, units, src}
+					id := &Id{ts, res, user, pass, name, units, src}
 					bucket := &Bucket{Id: id}
 					bucket.Vals = []float64{val}
 					c <- bucket
