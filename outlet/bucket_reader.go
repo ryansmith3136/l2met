@@ -11,12 +11,12 @@ import (
 type BucketReader struct {
 	Store       store.Store
 	Interval    time.Duration
+	Partition   string
 	Ttl         uint64
 	NumOutlets  int
 	NumScanners int
 	Inbox       chan *bucket.Bucket
 	Outbox      chan *bucket.Bucket
-	Partition   string
 }
 
 func NewBucketReader(mi int) *BucketReader {

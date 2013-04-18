@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"l2met/outlet"
 	"l2met/receiver"
 	"l2met/store"
 	"l2met/utils"
@@ -42,6 +43,12 @@ func main() {
 	})
 	http.HandleFunc("/logs", func(w http.ResponseWriter, r *http.Request) {
 		recvLogs(w, r, recv)
+	})
+
+	httpOutlet := new(outlet.HttpOutlet)
+	httpOutlet.Store = rs
+	http.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		httpOutlet.ServeReadBucket(w, r)
 	})
 
 	port := utils.EnvString("PORT", "8000")

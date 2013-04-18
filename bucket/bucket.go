@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+const DefaultUnit = "u"
+
 type Bucket struct {
 	// A bucket can be locked to ensure safe memory access.
 	sync.Mutex
@@ -141,7 +143,7 @@ func parseVal(s string) (string, float64) {
 
 	units = unitsPat.FindString(s)
 	if len(units) == 0 {
-		units = "u"
+		units = DefaultUnit
 	}
 
 	val = float64(1)
@@ -175,6 +177,9 @@ func (b *Bucket) Count() int {
 }
 
 func (b *Bucket) Sum() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	s := float64(0)
 	for i := range b.Vals {
 		s += b.Vals[i]
@@ -183,6 +188,9 @@ func (b *Bucket) Sum() float64 {
 }
 
 func (b *Bucket) Mean() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	return b.Sum() / float64(b.Count())
 }
 
@@ -193,35 +201,53 @@ func (b *Bucket) Sort() {
 }
 
 func (b *Bucket) Min() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	b.Sort()
 	return b.Vals[0]
 }
 
 func (b *Bucket) Median() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	b.Sort()
 	pos := int(math.Ceil(float64(b.Count() / 2)))
 	return b.Vals[pos]
 }
 
 func (b *Bucket) P95() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	b.Sort()
 	pos := int(math.Floor(float64(b.Count()) * 0.95))
 	return b.Vals[pos]
 }
 
 func (b *Bucket) P99() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	b.Sort()
 	pos := int(math.Floor(float64(b.Count()) * 0.99))
 	return b.Vals[pos]
 }
 
 func (b *Bucket) Max() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	b.Sort()
 	pos := b.Count() - 1
 	return b.Vals[pos]
 }
 
 func (b *Bucket) Last() float64 {
+	if b.Count() == 0 {
+		return float64(0)
+	}
 	pos := b.Count() - 1
 	return b.Vals[pos]
 }

@@ -1,5 +1,11 @@
 Each version of l2met corresponds to a git tag.
 
+## 0.10
+
+2012-04-10
+
+* [HTTP Outlet](https://github.com/ryandotsmith/l2met#http-outlet)
+
 ## 0.9
 
 2012-04-10
