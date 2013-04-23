@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"l2met/bucket"
-	"l2met/token"
 	"l2met/utils"
 	"net/http"
 	"strconv"
@@ -146,36 +145,9 @@ func (l *LibratoOutlet) outlet() {
 			fmt.Printf("at=%q\n", "empty-metrics-error")
 			continue
 		}
-
 		// all buckets in the payload are from the same token/account
 		// we can get the user/pass from any entry in the payload
 		sample := payloads[0]
-		tok := new(token.Token)
-
-		switch {
-		// If a global user/token is provided, use the token for all metrics.
-		// This enable a databaseless librato_outlet.
-		case len(l.User) > 0 && len(l.Pass) > 0:
-			tok.User = l.User
-			tok.Pass = l.Pass
-		// If user is l2met find credentials from postgres
-		case sample.User == "l2met":
-			//The token is constructed from the HTTP request
-			//with user="l2met" and password="token.id"
-			//TODO(ryandotsmith): Remove this path once all incoming
-			//requests are using dbless-auth
-			tok.Id = sample.Pass
-			err := tok.Get()
-			if err != nil {
-				fmt.Printf("at=token-get-error error=%s\n", err)
-				continue
-			}
-		// you're using librato credentials
-		default:
-			tok.User = sample.User
-			tok.Pass = sample.Pass
-		}
-
 		reqBody := new(LibratoRequest)
 		reqBody.Gauges = payloads
 		j, err := json.Marshal(reqBody)
@@ -184,14 +156,14 @@ func (l *LibratoOutlet) outlet() {
 			continue
 		}
 
-		l.postWithRetry(tok, bytes.NewBuffer(j))
+		l.postWithRetry(sample.User, sample.Pass, bytes.NewBuffer(j))
 	}
 }
 
-func (l *LibratoOutlet) postWithRetry(tok *token.Token, body *bytes.Buffer) error {
+func (l *LibratoOutlet) postWithRetry(u, p string, body *bytes.Buffer) error {
 	for i := 0; i <= l.Retries; i++ {
-		if err := l.post(tok, body); err != nil {
-			fmt.Printf("measure.librato.error=1 token=%s msg=%s attempt=%d\n", tok.Pass, err, i)
+		if err := l.post(u, p, body); err != nil {
+			fmt.Printf("measure.librato.error=1 user=%s msg=%s attempt=%d\n", u, err, i)
 			if i == l.Retries {
 				return err
 			}
@@ -203,7 +175,7 @@ func (l *LibratoOutlet) postWithRetry(tok *token.Token, body *bytes.Buffer) erro
 	return errors.New("Unable to post.")
 }
 
-func (l *LibratoOutlet) post(tok *token.Token, body *bytes.Buffer) error {
+func (l *LibratoOutlet) post(u, p string, body *bytes.Buffer) error {
 	defer utils.MeasureT("librato-post", time.Now())
 	req, err := http.NewRequest("POST", libratoUrl, body)
 	if err != nil {
@@ -211,7 +183,7 @@ func (l *LibratoOutlet) post(tok *token.Token, body *bytes.Buffer) error {
 	}
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("User-Agent", "l2met/0")
-	req.SetBasicAuth(tok.User, tok.Pass)
+	req.SetBasicAuth(u, p)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
