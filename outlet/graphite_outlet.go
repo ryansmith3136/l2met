@@ -24,10 +24,11 @@ func (g *GraphiteOutlet) Start() {
 	go g.outlet()
 }
 
-func NewGraphiteOutlet(mi, mo int) *GraphiteOutlet {
+func NewGraphiteOutlet(size int, r Reader) *GraphiteOutlet {
 	g := new(GraphiteOutlet)
-	g.Inbox = make(chan *bucket.Bucket, mi)
-	g.Outbox = make(chan *GraphitePayload, mo)
+	g.Inbox = make(chan *bucket.Bucket, size)
+	g.Outbox = make(chan *GraphitePayload, size)
+	g.Reader = r
 	return g
 }
 

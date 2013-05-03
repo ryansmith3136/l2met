@@ -1,0 +1,107 @@
+#!/bin/sh
+
+set -e
+
+if [ ! "$1" ]; then
+	echo 'Missing app name.'
+	echo 'Usage: setup app-name librato-email@domain.com librato-api-token'
+	exit 1
+fi
+
+if [ ! "$2" ]; then
+	echo 'Missing Librato email.'
+	echo 'Usage: setup app-name librato-email@domain.com librato-api-token'
+	exit 1
+fi
+
+if [ ! "$3" ]; then
+	echo 'Missing Librato API token.'
+	echo 'Usage: setup app-name librato-email@domain.com librato-api-token'
+	exit 1
+fi
+
+echo 'Checking dependencies.'
+which heroku > /dev/null
+if [ $? -ne 0 ]; then
+	echo 'Missing Heroku Toolbelt. Visit: https://toolbelt.heroku.com/'
+	exit 1
+fi
+
+which git > /dev/null
+if [ $? -ne 0 ]; then
+	echo 'Missing Git. Visit: https://help.github.com/articles/set-up-git'
+	exit 1
+fi
+
+which curl > /dev/null
+if [ $? -ne 0 ]; then
+	echo 'Missing curl(1)'
+	exit 1
+fi
+
+which dd > /dev/null
+if [ $? -ne 0 ]; then
+	echo 'Missing DD(1).'
+	exit 1
+fi
+
+which openssl > /dev/null
+if [ $? -ne 0 ]; then
+	echo 'Missing OPENSSL(1).'
+	exit 1
+fi
+
+# We need to create a git repository to deploy to Heroku.
+# The repo must be created before Heroku app creation so that
+# the Heroku command can update the remote in the git config.
+git init
+if [ $? -ne 0 ]; then
+	echo 'Unable to create git repository.'
+	exit 1
+fi
+
+heroku create $1 --buildpack http://github.com/ryandotsmith/null-buildpack.git >/dev/null
+if [ $? -eq 0 ]; then
+	echo "Created l2met with name: $1"
+else
+	echo "Unable to create Heroku app with name: $1"
+fi
+
+heroku config:set APP_NAME=$1 -a $1 >/dev/null
+if [ $? -eq 0 ]; then
+	echo "Config set: APP_NAME=$1"
+else
+	echo "Unable to update config: APP_NAME=$1"
+fi
+
+secret=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | openssl base64)
+heroku config:set SECRETS=$secret -a $1 >/dev/null
+if [ $? -eq 0 ]; then
+	echo "Config set: SECRETS=$secret"
+else
+	echo "Unable to update config: SECRETS=$secret"
+fi
+
+echo 'web: ./l2met -outlet="librato"' > Procfile
+
+git add .
+git commit -am "init"
+git push heroku master
+if [ $? -eq 0 ]; then
+	echo "$1 deployed."
+else
+	echo "Deploy failed. Run: heroku destroy -a $1 --confirm $1 before a new setup."
+fi
+
+#wait for web process to start
+sleep 2
+
+health=$(curl -s "https://$1.herokuapp.com/health" -w "%{http_code}")
+if [ $health -eq '200' ]; then
+	echo "L2met health check passed."
+else
+	echo "L2met health check failed. Run: heroku logs -t"
+fi
+
+token=$(curl -s "https://$1.herokuapp.com/sign" --data "$2:$3")
+echo "Drain URL: https://$token@$1.herokuapp.com/logs"

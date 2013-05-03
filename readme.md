@@ -6,7 +6,7 @@ Convert a formatted log stream into metrics.
 * [Synopsis](#synopsis)
 * [Features](#features)
 * [Log Conventions](#log-conventions)
-* [Setup](#setup)
+* [Getting Started](#getting-started)
 * [Hacking on l2met](#hacking-on-l2met)
 
 ## Current Release
@@ -214,59 +214,35 @@ For example, If we wanted to test if the count was 5 +/- 2, the following reques
 $ curl http://your-token@l2met.net/metrics?name=db.get&resolution=60&units=ms&limit=1&offset=1&count=5&tol=2
 ```
 
-## Setup
+## Getting Started
 
-The easiest way to get l2met up and running is to deploy to Heroku. This guide assume you have already created a Heroku & Librato account.
-
-#### Create a Heroku app.
+The easiest way to get l2met up and running is to deploy to Heroku. This guide assume you have already created a Heroku & Librato account. You can find your Librato account details [here](https://metrics.librato.com/account#api_tokens).
 
 ```bash
-$ mkdir l2met; cd l2met
-$ curl https://s3-us-west-2.amazonaws.com/l2met/v1.0/linux/amd64/l2met.tar.gz | tar xvz
-$ git init
-$ heroku create your-l2met --buildpack http://github.com/ryandotsmith/null-buildpack.git
-$ git add .
-$ git commit -am "init"
-$ git push heroku master
+$ curl https://s3-us-west-2.amazonaws.com/l2met/v2.0beta/linux/amd64/l2met.tar.gz | tar xvz
+
+$ ./setup my-l2met e@foo.com abc123
+...
+Drain URL: https://long-token@my-l2met.herokuapp.com/logs
 ```
 
-#### Setup Redis
+This command will create Heroku app named `my-l2met` and return a drain URL with encrypted Librato credentials for a Librato account with email `e@foo.com` and an API token of `abc123`.
 
-I prefer redisgreen, however there are cheaper alternatives. Whichever provider you choose, ensure that you have set REDIS_URL properly.
+#### Draining an app into l2met
+
+After you have created `my-l2met`, you can now add the drain URL to a Heroku app. A copy of the log stream will be delivered to `my-l2met` and metrics will be sent to the Librato account which your provided in the setup.
 
 ```bash
-$ heroku addons:add redisgreen:basic
-$ heroku config:set REDIS_URL=$(heroku config:get REDISGREEN_URL)
+$ heroku drains:add https://long-token@my-l2met.herokuapp.com/logs -a myapp
 ```
 
-#### Setup Security
+You can manually send data to `my-l2met` by the following curl command:
 
 ```bash
-heroku config:set SECRETS=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | openssl base64)
+$ curl "https://long-token@my-l2met.herokuapp.com/logs" --data "94 <190>1 2013-03-27T20:02:24+00:00 hostname token shuttle - - measure.hello=99 measure.world=100"
 ```
 
-#### Scale processes.
-
-```bash
-$ heroku scale web=1 librato_outlet=1
-```
-
-#### Sending data to l2met
-
-Now that you have created an l2met app, you can drain logs from other heroku apps into l2met. To do so, will will configure our app to drain its logs into l2met.
-
-L2met expects your Librato credentials to be Base64 encoded. You can use Ruby to quickly encode your credentials. Replace `email` with the email corrisponding to your librato account. Replace `token` with your Librato API token. You can find your Librato account details [here](https://metrics.librato.com/account#api_tokens).
-
-```bash
-$ ruby -r base64 -e 'puts Base64.encode64("email:token").tr("\n", "")'
-ZW1haWw6dG9rZW4=
-```
-
-Now we can add our l2met URL as a drain on our app.
-
-```bash
-$ heroku drains:add https://ZW1haWw6dG9rZW4=@l2met.herokuapp.com/logs -a myapp
-```
+Verify the command worked by viewing the [newly created metrics](https://metrics.librato.com/metrics?search=hello).
 
 ## Hacking on l2met
 
@@ -276,16 +252,12 @@ Before working on a new feature, send your proposal to the [mailing list](https:
 
 ```bash
 $ go version
-go version go1.0.3
-$ ./redis-server --version
-Redis server v=2.6.7 sha=00000000:0 malloc=libc bits=64
+go version devel +d58997478ec6 Mon Apr 08 00:09:35 2013 -0700 darwin/amd64
 ```
 
 ```bash
 $ git clone git://github.com/ryandotsmith/l2met.git
 $ cd l2met
 $ export SECRETS=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | openssl base64)
-$ export REDIS_URL=redis://localhost:6379
-$ redis-server &
 $ go test ./...
 ```

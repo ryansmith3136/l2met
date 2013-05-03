@@ -45,6 +45,9 @@ func TestParseBase64EncodedAuth(t *testing.T) {
 }
 
 func TestParseEncryptedAuth(t *testing.T) {
+	if len(keys) == 0 {
+		t.Fatalf("Must set $SECRETS\n")
+	}
 	var b bytes.Buffer
 	r, err := http.NewRequest("GET", "http://does-not-matter.com", &b)
 	if err != nil {

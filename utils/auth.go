@@ -16,11 +16,19 @@ var (
 )
 
 func init() {
-	if s := strings.Split(os.Getenv("SECRETS"), ":"); len(s) > 0 {
+	if s := strings.Split(os.Getenv("SECRETS"), ":"); len(s[0]) > 0 {
 		keys = fernet.MustDecodeKeys(s...)
 	}
 }
 
+func Sign(b []byte) ([]byte, error) {
+	for i := range keys {
+		if res, err := fernet.EncryptAndSign(b, keys[i]); err == nil {
+			return res, err
+		}
+	}
+	return []byte(""), errors.New("Unable to sign payload.")
+}
 
 func parseAuthHeader(r *http.Request) (string, error) {
 	header, ok := r.Header["Authorization"]
@@ -30,7 +38,7 @@ func parseAuthHeader(r *http.Request) (string, error) {
 	return header[0], nil
 }
 
-func parseAuthValue(header string) (string, string ,error) {
+func parseAuthValue(header string) (string, string, error) {
 	parts := strings.SplitN(header, " ", 2)
 	if len(parts) != 2 {
 		return "", "", errors.New("Authorization header malformed.")

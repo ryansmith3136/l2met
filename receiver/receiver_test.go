@@ -3,164 +3,128 @@ package receiver
 import (
 	"l2met/bucket"
 	"l2met/store"
+	"fmt"
 	"testing"
 	"time"
 )
 
-func makeReceiver() (store.Store, *Receiver) {
-	store := store.NewMemStore()
+type testOps map[string][]string
 
-	maxOutbox := 100
-	maxInbox := 100
-	recv := NewReceiver(maxInbox, maxOutbox)
-	recv.NumOutlets = 2
-	recv.NumAcceptors = 2
-	recv.Store = store
-
-	return store, recv
-}
-
-func TestReceive(t *testing.T) {
-	store, recv := makeReceiver()
-	recv.FlushInterval = time.Millisecond
-	recv.Start()
-	defer recv.Stop()
-
-	opts := map[string][]string{}
-	msg := []byte("81 <190>1 2013-03-27T20:02:24+00:00 hostname token shuttle - - measure=hello val=99\n")
-	recv.Receive("user", "pass", msg, opts)
-	time.Sleep(recv.FlushInterval * 2)
-
-	var buckets []*bucket.Bucket
-	for b := range store.Scan("not important") {
-		buckets = append(buckets, b)
+func TestReceiver(t *testing.T) {
+	cases := []struct {
+		Opts testOps
+		LogLine []byte
+		Buckets []*bucket.Bucket
+	}{
+		{
+			testOps{"user": []string{"u"}, "password": []string{"p"}},
+			fmtHkLog("host=l2met.net connect=1ms service=4ms bytes=10"),
+			[]*bucket.Bucket{
+				testBucket("router.connect", "l2met.net", "u", "p", time.Minute, []float64{1}),
+				testBucket("router.service", "l2met.net", "u", "p", time.Minute, []float64{4}),
+				testBucket("router.bytes", "l2met.net", "u", "p", time.Minute, []float64{10}),
+			},
+		},
+		{
+			testOps{"user": []string{"u"}, "password": []string{"p"}},
+			fmtLog("measure.a"),
+			[]*bucket.Bucket{testBucket("a", "", "u", "p", time.Minute, []float64{1})},
+		},
+		{
+			testOps{"resolution": []string{"1"}, "user": []string{"u"}, "password": []string{"p"}},
+			fmtLog("measure.a"),
+			[]*bucket.Bucket{testBucket("a", "", "u", "p", time.Second, []float64{1})},
+		},
+		{
+			testOps{"user": []string{"u"}, "password": []string{"p"}},
+			fmtLog("measure.a=1"),
+			[]*bucket.Bucket{testBucket("a", "", "u", "p", time.Minute, []float64{1})},
+		},
+		{
+			testOps{"user": []string{"u"}, "password": []string{"p"}},
+			fmtLog("measure.a=1 measure.b=2"),
+			[]*bucket.Bucket{
+				testBucket("a", "", "u", "p", time.Minute, []float64{1}),
+				testBucket("b", "", "u", "p", time.Minute, []float64{2}),
+			},
+		},
 	}
 
-	if len(buckets) != 1 {
-		t.FailNow()
-	}
-
-	testBucket := buckets[0]
-
-	expectedName := "hello"
-	actualName := testBucket.Id.Name
-	if actualName != expectedName {
-		t.Errorf("actual=%s expected=%s\n", actualName, expectedName)
-	}
-
-	if testBucket.Sum() != 99 {
-		t.FailNow()
-	}
-}
-
-func TestReceiveOpts(t *testing.T) {
-	store, recv := makeReceiver()
-	recv.FlushInterval = time.Millisecond
-	recv.Start()
-	defer recv.Stop()
-
-	opts := map[string][]string{"resolution": []string{"1"}}
-	msg := []byte("81 <190>1 2013-03-27T00:00:01+00:00 hostname token shuttle - - measure=hello val=99\n")
-	recv.Receive("user", "pass", msg, opts)
-	time.Sleep(recv.FlushInterval * 2)
-
-	var buckets []*bucket.Bucket
-	for b := range store.Scan("not important") {
-		buckets = append(buckets, b)
-	}
-
-	if len(buckets) != 1 {
-		t.FailNow()
-	}
-
-	testBucket := buckets[0]
-
-	expectedSum := float64(99)
-	actualSum := testBucket.Sum()
-	if actualSum != expectedSum {
-		t.Errorf("actual=%d expected=%d\n", actualSum, expectedSum)
-	}
-
-	expectedSecond := 1
-	actualSecond := testBucket.Id.Time.Second()
-	if actualSecond != expectedSecond {
-		t.Errorf("actual=%d expected=%d\n", actualSecond, expectedSecond)
-	}
-}
-
-func TestReceiveMultiMetrics(t *testing.T) {
-	store, recv := makeReceiver()
-	recv.FlushInterval = time.Millisecond
-	recv.Start()
-	defer recv.Stop()
-
-	opts := map[string][]string{"resolution": []string{"1000"}}
-	msg := []byte("95 <190>1 2013-03-27T00:00:01+00:00 hostname token shuttle - - measure=hello val=10 measure.db=10\n")
-	recv.Receive("user", "pass", msg, opts)
-	time.Sleep(recv.FlushInterval * 2)
-
-	var buckets []*bucket.Bucket
-	for b := range store.Scan("not important") {
-		buckets = append(buckets, b)
-	}
-
-	expectedLength := 2
-	actualLength := len(buckets)
-	if actualLength != expectedLength {
-		t.Errorf("expected=%d actual=%d\n", expectedLength, actualLength)
-	}
-
-	//the log line above has two measurements with values of 10.
-	actualSum := float64(0)
-	for i := range buckets {
-		actualSum += buckets[i].Sum()
-	}
-	expectedSum := float64(20)
-	if actualSum != expectedSum {
-		t.Errorf("expected=%d actual=%d\n", expectedSum, actualSum)
-	}
-}
-
-func TestReceiveRouter(t *testing.T) {
-	store, recv := makeReceiver()
-	recv.FlushInterval = time.Millisecond
-	recv.Start()
-	defer recv.Stop()
-
-	opts := map[string][]string{"resolution": []string{"1"}}
-	msg := []byte("113 <190>1 2013-03-27T00:00:01+00:00 shuttle heroku router - - host=test.l2met.net service=10ms connect=10ms bytes=45")
-	recv.Receive("user", "pass", msg, opts)
-	time.Sleep(recv.FlushInterval * 2)
-
-	//There are 3 measurements in our logline.
-	var buckets []*bucket.Bucket
-	for b := range store.Scan("not important") {
-		buckets = append(buckets, b)
-	}
-
-	expectedLength := 3
-	actualLength := len(buckets)
-	if actualLength != expectedLength {
-		t.Errorf("expected=%d actual=%d\n", expectedLength, actualLength)
-	}
-
-	//the log line above has two measurements with values of 10.
-	actualSum := float64(0)
-	for i := range buckets {
-		actualSum += buckets[i].Sum()
-	}
-	expectedSum := float64(65)
-	if actualSum != expectedSum {
-		t.Errorf("expected=%d actual=%d\n", expectedSum, actualSum)
-	}
-
-	//The name of the metric will be router.service, router.connect.
-	//The source will include the host.
-	expectedSrc := "test.l2met.net"
-	for i := range buckets {
-		actualSrc := buckets[i].Id.Source
-		if actualSrc != expectedSrc {
-			t.Errorf("expected=%s actual=%s\n", expectedSrc, actualSrc)
+	for i := range cases {
+		match := 0
+		actual, err := receiveInput(cases[i].Opts, cases[i].LogLine)
+		if err != nil {
+			t.Errorf("error=%s\n", err)
+		}
+		expected := cases[i].Buckets
+		for j := range expected {
+			for k := range actual {
+				if bucketsEqual(actual[k], expected[j], t) {
+					match++
+				}
+			}
+		}
+		if match != len(expected) {
+			t.FailNow()
 		}
 	}
+}
+
+
+func testBucket(name, source, user, pass string, res time.Duration, vals []float64) *bucket.Bucket {
+	id := new(bucket.Id)
+	id.Name = name
+	id.Source = source
+	id.User = user
+	id.Pass = pass
+	id.Resolution = res
+	return &bucket.Bucket{Id: id, Vals: vals}
+}
+
+func fmtHkLog(s string) []byte {
+	base := "<190>1 2013-03-27T20:02:24+00:00 hostname token router - - "
+	line := base + s
+	return []byte(fmt.Sprintf("%d %s", len(line), line))
+}
+
+func fmtLog(s string) []byte {
+	base := "<190>1 2013-03-27T20:02:24+00:00 hostname token shuttle - - "
+	line := base + s
+	return []byte(fmt.Sprintf("%d %s", len(line), line))
+}
+
+func receiveInput(opts testOps, msg []byte) ([]*bucket.Bucket, error) {
+	st := store.NewMemStore()
+	recv := NewReceiver(100, 1, time.Millisecond*5, st)
+	recv.Start()
+	defer recv.Stop()
+
+	recv.Receive(msg, opts)
+	time.Sleep(recv.FlushInterval * 2)
+
+	ch, err := st.Scan()
+	if err != nil {
+		return nil, err
+	}
+	buckets := make([]*bucket.Bucket, 0)
+	for b := range ch {
+		buckets = append(buckets, b)
+	}
+	return buckets, nil
+}
+
+func bucketsEqual(actual, expected *bucket.Bucket, t *testing.T) bool {
+	if actual.Id.Name != expected.Id.Name {
+		t.Log("actual-name=%s expected-name=%s\n", actual.Id.Name, expected.Id.Name)
+		return false
+	}
+	if actual.Id.Source != expected.Id.Source {
+		t.Log("actual-source=%s expected-source=%s\n", actual.Id.Source, expected.Id.Source)
+		return false
+	}
+	if actual.Sum() != expected.Sum() {
+		t.Log("actual-sum=%s expected-sum=%s\n", actual.Sum(), expected.Sum())
+		return false
+	}
+	return true
 }

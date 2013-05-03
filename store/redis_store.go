@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"hash/crc64"
@@ -57,12 +58,17 @@ func (s *RedisStore) Health() bool {
 	return true
 }
 
-func (s *RedisStore) Scan(partition string) <-chan *bucket.Bucket {
+func (s *RedisStore) Scan() (<-chan *bucket.Bucket, error) {
 	retBuckets := make(chan *bucket.Bucket)
+	partition, err := s.lockPartition()
+	if err != nil {
+		return retBuckets, err
+	}
 	go func(out chan *bucket.Bucket) {
 		rc := s.redisPool.Get()
 		defer rc.Close()
 		defer close(out)
+		defer s.unlockPartition(partition)
 		rc.Send("MULTI")
 		rc.Send("SMEMBERS", partition)
 		rc.Send("DEL", partition)
@@ -83,7 +89,7 @@ func (s *RedisStore) Scan(partition string) <-chan *bucket.Bucket {
 			out <- &bucket.Bucket{Id: id}
 		}
 	}(retBuckets)
-	return retBuckets
+	return retBuckets, nil
 }
 
 func (s *RedisStore) Putback(partition string, id *bucket.Id) error {
@@ -143,4 +149,46 @@ func (s *RedisStore) Get(b *bucket.Bucket) error {
 func (s *RedisStore) bucketPartition(prefix string, b []byte) string {
 	check := crc64.Checksum(b, PartitionTable)
 	return fmt.Sprintf("%s.%d", prefix, check%s.MaxPartitions())
+}
+
+func (s *RedisStore) lockPartition() (uint64, error) {
+	for {
+		for p := uint64(0); p < s.MaxPartitions(); p++ {
+			name := fmt.Sprintf("lock.%d", p)
+			//TODO(ryandotsmith): remove magic number.
+			locked, err := s.writeLock(name, 5)
+			if err != nil {
+				return 0, err
+			}
+			if locked {
+				return p, nil
+			}
+		}
+		time.Sleep(time.Second * 5)
+	}
+	return 0, errors.New("LockPartition impossible broke the loop.")
+}
+
+func (s *RedisStore) writeLock(name string, ttl uint64) (bool, error) {
+	rc := s.redisPool.Get()
+	defer rc.Close()
+
+	new := time.Now().Unix() + int64(ttl) + 1
+	old, err := redis.Int(rc.Do("GETSET", name, new))
+	// If the ErrNil is present, the old value is set to 0.
+	if err != nil && err != redis.ErrNil && old == 0 {
+		return false, err
+	}
+	// If the new value is greater than the old
+	// value, then the old lock is expired.
+	return new > int64(old), nil
+}
+
+func (s *RedisStore) unlockPartition(p uint64) error {
+	rc := s.redisPool.Get()
+	defer rc.Close()
+
+	key := fmt.Sprintf("lock.%d", p)
+	_, err := rc.Do("DEL", key)
+	return err
 }

@@ -16,13 +16,6 @@ import (
 // The processing of the body happens in a seperate routine. We use
 // this struct to hold the data that is passed inbetween routines.
 type LogRequest struct {
-	// The user and pass values come from data in the Authorization header.
-	// If a single encrypted value is sent it is decrypted into the user
-	// and pass.
-	// if a username and token are sent the token is used to find the
-	// librato from postgres
-	User string
-	Pass string
 	// The body of the HTTP request.
 	Body []byte
 	// Options from the query parameters
@@ -58,17 +51,21 @@ type Receiver struct {
 	numBuckets uint64
 }
 
-func NewReceiver(mo, mi int) *Receiver {
+func NewReceiver(sz, c int, i time.Duration, s store.Store) *Receiver {
 	r := new(Receiver)
-	r.Inbox = make(chan *LogRequest, mi)
-	r.Outbox = make(chan *bucket.Bucket, mo)
+	r.Inbox = make(chan *LogRequest, sz)
+	r.Outbox = make(chan *bucket.Bucket, sz)
 	r.Register = &register{m: make(map[bucket.Id]*bucket.Bucket)}
 	r.numBuckets = uint64(0)
+	r.FlushInterval = i
+	r.NumOutlets = c
+	r.NumAcceptors = c
+	r.Store = s
 	return r
 }
 
-func (r *Receiver) Receive(user, pass string, b []byte, opts map[string][]string) {
-	r.Inbox <- &LogRequest{user, pass, b, opts}
+func (r *Receiver) Receive(b []byte, opts map[string][]string) {
+	r.Inbox <- &LogRequest{b, opts}
 }
 
 func (r *Receiver) Start() {
@@ -98,7 +95,7 @@ func (r *Receiver) Stop() {
 func (r *Receiver) Accept() {
 	for lreq := range r.Inbox {
 		rdr := bufio.NewReader(bytes.NewReader(lreq.Body))
-		for bucket := range bucket.NewBucket(lreq.User, lreq.Pass, rdr, lreq.Opts) {
+		for bucket := range bucket.NewBuckets(rdr, lreq.Opts) {
 			r.numBuckets += 1
 			r.Register.Lock()
 			k := *bucket.Id

@@ -8,12 +8,29 @@ import (
 	"io/ioutil"
 	"l2met/bucket"
 	"l2met/utils"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
 )
 
 var libratoUrl = "https://metrics-api.librato.com/v1/metrics"
+
+var httpClient *http.Client
+
+func init() {
+	tr := &http.Transport{
+		DisableKeepAlives: true,
+		Dial: func(n, a string) (net.Conn, error) {
+			c, err := net.DialTimeout(n, a, time.Second*5)
+			if err != nil {
+				return c, err
+			}
+			return c, c.SetDeadline(time.Now().Add(time.Second * 7))
+		},
+	}
+	httpClient = &http.Client{Transport: tr}
+}
 
 type LibratoAttributes struct {
 	Min   int    `json:"display_min"`
@@ -53,17 +70,20 @@ type LibratoOutlet struct {
 	NumOutlets int
 	// How many accept routines should be running.
 	NumConverters int
-	Reader        Reader
-	Retries       int
-	User          string
-	Pass          string
+	//We use the Reader to read buckets from the store into our Inbox.
+	Reader Reader
+	//Number of times to retry HTTP requests to librato's api.
+	Retries int
 }
 
-func NewLibratoOutlet(mi, mc, mo int) *LibratoOutlet {
+func NewLibratoOutlet(s, c, r int, rdr Reader) *LibratoOutlet {
 	l := new(LibratoOutlet)
-	l.Inbox = make(chan *bucket.Bucket, mi)
-	l.Conversions = make(chan *LibratoPayload, mc)
-	l.Outbox = make(chan []*LibratoPayload, mo)
+	l.Inbox = make(chan *bucket.Bucket, s)
+	l.Conversions = make(chan *LibratoPayload, s)
+	l.Outbox = make(chan []*LibratoPayload, s)
+	l.NumConverters = c
+	l.NumOutlets = c
+	l.Reader = rdr
 	return l
 }
 
@@ -76,10 +96,9 @@ func (l *LibratoOutlet) Start() {
 	for i := 0; i < l.NumOutlets; i++ {
 		go l.outlet()
 	}
-	go l.report()
 }
 
-func (l *LibratoOutlet) report() {
+func (l *LibratoOutlet) Report() {
 	for _ = range time.Tick(time.Second * 2) {
 		utils.MeasureI("librato-outlet.inbox", int64(len(l.Inbox)))
 		utils.MeasureI("librato-outlet.conversions", int64(len(l.Conversions)))
@@ -184,7 +203,7 @@ func (l *LibratoOutlet) post(u, p string, body *bytes.Buffer) error {
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("User-Agent", "l2met/0")
 	req.SetBasicAuth(u, p)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}

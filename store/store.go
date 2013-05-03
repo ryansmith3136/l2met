@@ -7,6 +7,6 @@ type Store interface {
 	Put(*bucket.Bucket) error
 	Putback(string, *bucket.Id) error
 	Get(*bucket.Bucket) error
-	Scan(string) <-chan *bucket.Bucket
+	Scan() (<-chan *bucket.Bucket, error)
 	Health() bool
 }
