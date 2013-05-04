@@ -18,11 +18,11 @@ Convert a formatted log stream into metrics.
 
 L2met receives HTTP requests that contain a body of rfc5424 formatted data. Commonly data is drained into l2met by [logplex](https://github.com/heroku/logplex) or [log-shuttle](https://github.com/ryandotsmith/log-shuttle).
 
-Once data is delivered, l2met extracts and parses the individual log lines using the [log conventions](#log-conventions) and then stores the data in redis so that outlets can read the data and build metrics. The librato_outlet is the most popular and will put all of your metrics into your librato account. See the [setup](#setup) section to get started.
+Once data is delivered, l2met extracts and parses the individual log lines using the [log conventions](#log-conventions) and then stores the data in redis so that outlets can read the data and build metrics. The librato_outlet is the most popular and will put all of your metrics into your Librato account. See the [setup](#setup) section to get started.
 
 ## Log Conventions
 
-L2met uses convention over configuration to build metrics. Keys that are prefixed with measre and have numerical values will be analyzed. L2met uses a loosely defined key=val log structure.
+L2met uses convention over configuration to build metrics. Keys that are prefixed with `measure.` and have numerical values will be analyzed. L2met uses a loosely defined key=val log structure.
 
 ### Keywords:
 
@@ -31,7 +31,7 @@ There are only a few keywords that l2met will parse.
 * measure.*
 * source
 
-Any key that begins with measure. will be considered for a measurement. You can add a source key to further identify the measurement.
+Any key that begins with `measure.` will be considered for a measurement. You can add a source key to further identify the measurement.
 
 A simple example:
 
@@ -51,7 +51,7 @@ Metrics Produced:
 * db.latency.count
 * db.latency.sum
 
-An example using [multi-metrics](#multi-metrics) and a source key.
+An example using [multi-metrics](#multi-metrics) and a source key:
 
 ```ruby
 $stdout.puts("source=prod measure.db.latency=20 measure.view.latency=10")
@@ -91,7 +91,7 @@ Metrics Produced:
 
 ### Multi-metrics
 
-We want to be able to specify multiple measurements on a single line so as not to have to pay the (albeit low) overhead of writing to stdout. However, we don't want to take every k=v under the sun. L2met has always forced you to think about the things your are measuring and this feature does not regress in that regard.
+We want to be able to specify multiple measurements on a single line so as not to have to pay the (albeit low) overhead of writing to stdout. However, we don't want to take every k=v under the sun. L2met has always forced you to think about the things you are measuring and this feature does not regress in that regard.
 
 Example:
 
@@ -108,7 +108,7 @@ Thus you can measure multiple things provided the key is prefixed with `measure.
 
 ### Heroku Router
 
-The Heroku router has a log line convention described [here](https://devcenter.heroku.com/articles/http-routing#heroku-router-log-format)
+The Heroku router has a log line convention described [here](https://devcenter.heroku.com/articles/http-routing#heroku-router-log-format).
 
 This feature will read the User field in the syslog packet looking for the string "router." If a match is had, we will parse the structured data and massage it to match the l2met convention. Furthermore, we will prefix the measurement name with the parsed host field in the log line.
 
@@ -120,9 +120,9 @@ path=/logs host=test.l2met.net connect=1ms service=2ms bytes=0
 
 Would produce the following buckets:
 
-1. {name=router.connect source=test.l2met.net.connect vals=[1]}
-2. {name=router.service source=test.l2met.net.service vals=[2]}
-3. {name=router.bytes   source=test.l2met.net.bytes   vals=[0]}
+1. {name=router.connect, source=test.l2met.net.connect, vals=[1]}
+2. {name=router.service, source=test.l2met.net.service, vals=[2]}
+3. {name=router.bytes,   source=test.l2met.net.bytes,   vals=[0]}
 
 ### Drain Parameters
 
@@ -133,7 +133,7 @@ There are several configuration options that can be specified at the drain level
 
 #### High Resolution Buckets
 
-By default, l2met will hold measurements in 1 minute buckets. This means that data visible in librato and graphite have a granularity of 1 minute. However, It is possible to to achieve a greater level of resolution. For example, you can get 1 second level resolution by appending a query parameter to your drain url. Notice that the resolution is specified in seconds.
+By default, l2met will hold measurements in 1 minute buckets. This means that data visible in Librato and Graphite have a granularity of 1 minute. However, it is possible to achieve a greater level of resolution. For example, you can get 1 second level resolution by appending a query parameter to your drain url. Note that the resolution is specified in seconds.
 
 The supported resolutions are: 1, 5, 30, 60.
 
@@ -145,7 +145,7 @@ https://user:token@l2met.herokuapp.com/logs?resolution=1
 
 #### Drain Prefix
 
-It can be useful to prepend a string to all metrics going into a drain. For instance, say you want all of your pretrics to include the environment or app name. You can acheive this by adding a drain prefix.
+It can be useful to prepend a string to all metrics going into a drain. For instance, say you want all of your metrics to include the environment or app name. You can achieve this by adding a drain prefix.
 
 Drain URL:
 
@@ -159,7 +159,7 @@ Most outlet providers allow meta-data to be associated with measurements. Bucket
 
 #### Units
 
-L2met supports associating units with numbers by appending on a non-digit sequence after the digits. L2met will assign all measurements a units of *y* unless specified. You can specify a unit by prepending `/[a-zA-z]+/` after the digit. For instance:
+L2met supports associating units with numbers by appending a non-digit sequence after the digits. L2met will assign all measurements a units of *y* unless specified. You can specify a unit by prepending `/[a-zA-z]+/` after the digit. For instance:
 
 ```
 measure.db.get=1ms measure.web.get=1
@@ -167,16 +167,16 @@ measure.db.get=1ms measure.web.get=1
 
 This will create the following buckets:
 
-1. {name="measure.db.get", vals=[1], units="ms"}
-2. {name="measure.web.get", vals=[1], units="y"}
+1. {name=db.get,  vals=[1], units=ms}
+2. {name=web.get, vals=[1], units=y}
 
 #### Min Y Value
 
-Librato charts allow charts to have a min y value. L2met sets this to 0. It cant not be overriden at this time. Open a GH issue if this is a problem for you.
+Librato allows charts to have a min y value. L2met sets this to 0. It cannot be overridden at this time. Open a GH issue if this is a problem for you.
 
 ### HTTP Outlet
 
-The HTTP Outlet is a read API for your metrics. You can query metrics by id. Id construction is a bit rough at this stage, but if you know what you are looking for, reading metrics can be quite simple. For example, if the following logs are emmited
+The HTTP Outlet is a read API for your metrics. You can query metrics by id. Id construction is a bit rough at this stage, but if you know what you are looking for, reading metrics can be quite simple. For example, if the following logs are emitted:
 
 ```
 measure.db.get=10ms
@@ -195,7 +195,7 @@ Depending on the resolution of the drain, you will get the last bucket offset by
 You can also assert what you expect the metrics to be. This is useful in that you can point pingdom directly at your l2met instance and create alerts on metrics. For example, if an alert must be made when user signups fall below 5 per minute, we could construct the following request:
 
 ```bash
-$ curl http://your-token@l2met.net/metrics?name=db.get&resolution=60&units=ms&limit=1&offset=1&count=5
+$ curl http://your-token@l2met.net/metrics?name=user.signup&resolution=60&limit=1&offset=1&count=5
 ```
 
 If there were only 4 counts of user.signup, then the query would return a 404 which would cause pingdom to send the alert.
@@ -206,19 +206,19 @@ The following metrics can be asserted:
 * mean
 * sum
 
-Tolerance can also be applied to all of the assertions. This compensates for the lack of in-equality operators in the URL. If the tolerance is not present, it is assumed to be 0. If the tolerance is specified, it applies to all metric assertions. You must construct separate requests if you want unique tolerance to metric assertions.
+Tolerance can also be applied to all of the assertions. This compensates for the lack of inequality operators in the URL. If the tolerance is not present, it is assumed to be 0. If the tolerance is specified, it applies to all metric assertions. You must construct separate requests if you want unique tolerance to metric assertions.
 
-For example, If we wanted to test if the count was 5 +/- 2, the following request would suffice:
+For example, if we wanted to test if the count was 5 +/- 2, the following request would suffice:
 
 ```bash
-$ curl http://your-token@l2met.net/metrics?name=db.get&resolution=60&units=ms&limit=1&offset=1&count=5&tol=2
+$ curl http://your-token@l2met.net/metrics?name=user.signup&resolution=60&limit=1&offset=1&count=5&tol=2
 ```
 
 ## Setup
 
-The easiest way to get l2met up and running is to deploy to Heroku. This guide assume you have already created a Heroku & Librato account.
+The easiest way to get l2met up and running is to deploy to Heroku. This guide assumes you have already created a Heroku & Librato account.
 
-#### Create a Heroku app.
+#### Create a Heroku app
 
 ```bash
 $ mkdir l2met; cd l2met
@@ -232,7 +232,7 @@ $ git push heroku master
 
 #### Setup Redis
 
-I prefer redisgreen, however there are cheaper alternatives. Whichever provider you choose, ensure that you have set REDIS_URL properly.
+I prefer redisgreen, however there are cheaper alternatives. Whichever provider you choose, ensure that you have set your REDIS_URL properly.
 
 ```bash
 $ heroku addons:add redisgreen:basic
@@ -245,7 +245,7 @@ $ heroku config:set REDIS_URL=$(heroku config:get REDISGREEN_URL)
 heroku config:set SECRETS=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | openssl base64)
 ```
 
-#### Scale processes.
+#### Scale processes
 
 ```bash
 $ heroku scale web=1 librato_outlet=1
@@ -253,9 +253,9 @@ $ heroku scale web=1 librato_outlet=1
 
 #### Sending data to l2met
 
-Now that you have created an l2met app, you can drain logs from other heroku apps into l2met. To do so, will will configure our app to drain its logs into l2met.
+Now that you have created an l2met app, you can drain logs from other heroku apps into l2met. To do so, we will configure our app to drain its logs into l2met.
 
-L2met expects your Librato credentials to be Base64 encoded. You can use Ruby to quickly encode your credentials. Replace `email` with the email corrisponding to your librato account. Replace `token` with your Librato API token. You can find your Librato account details [here](https://metrics.librato.com/account#api_tokens).
+L2met expects your Librato credentials to be Base64 encoded. You can use Ruby to quickly encode your credentials. Replace `email` with the email corresponding to your Librato account, and `token` with your Librato API token. You can find your Librato account details [here](https://metrics.librato.com/account#api_tokens).
 
 ```bash
 $ ruby -r base64 -e 'puts Base64.encode64("email:token").tr("\n", "")'
