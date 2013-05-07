@@ -23,11 +23,14 @@ type LibratoAttributes struct {
 type LibratoPayload struct {
 	Name   string             `json:"name"`
 	Time   int64              `json:"measure_time"`
-	Val    string             `json:"value"`
 	Source string             `json:"source,omitempty"`
 	User   string             `json:",omitempty"`
 	Pass   string             `json:",omitempty"`
-	Attr   *LibratoAttributes `json:"attributes,omitempty"`
+	Attrs  *LibratoAttributes `json:"attributes,omitempty"`
+	Count  int                `json:"count"`
+	Sum    float64            `json:"sum"`
+	Min    float64            `json:"min"`
+	Max    float64            `json:"max"`
 }
 
 type LibratoRequest struct {
@@ -95,17 +98,19 @@ func (l *LibratoOutlet) convert() {
 		}
 		//TODO(ryandotsmith): This is getting out of control.
 		//We need a succinct way to building payloads.
-		countAttr := &LibratoAttributes{Min: 0, Units: "count"}
 		attrs := &LibratoAttributes{Min: 0, Units: bucket.Id.Units}
-		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".last", Val: ff(bucket.Last())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".min", Val: ff(bucket.Min())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".max", Val: ff(bucket.Max())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".mean", Val: ff(bucket.Mean())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".median", Val: ff(bucket.Median())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".perc95", Val: ff(bucket.P95())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".perc99", Val: ff(bucket.P99())}
-		l.Conversions <- &LibratoPayload{Attr: attrs, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".sum", Val: ff(bucket.Sum())}
-		l.Conversions <- &LibratoPayload{Attr: countAttr, User: bucket.Id.User, Pass: bucket.Id.Pass, Time: ft(bucket.Id.Time), Source: bucket.Id.Source, Name: bucket.Id.Name + ".count", Val: fi(bucket.Count())}
+		l.Conversions <- &LibratoPayload{
+			Name:   bucket.Id.Name,
+			Source: bucket.Id.Source,
+			Time:   ft(bucket.Id.Time),
+			User:   bucket.Id.User,
+			Pass:   bucket.Id.Pass,
+			Attrs:  attrs,
+			Count:  bucket.Count(),
+			Sum:    bucket.Sum(),
+			Min:    bucket.Min(),
+			Max:    bucket.Max(),
+		}
 		fmt.Printf("measure.bucket.conversion.delay=%d\n", bucket.Id.Delay(time.Now()))
 	}
 }
