@@ -90,5 +90,5 @@ func Parse(r *http.Request) (string, string, error) {
 			return parts[0], parts[1], nil
 		}
 	}
-	return "", "", errors.New("End of Authe chain reached.")
+	return "", "", errors.New("End of Authentication chain reached.")
 }
