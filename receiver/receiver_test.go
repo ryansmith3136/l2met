@@ -11,7 +11,7 @@ import (
 type testOps map[string][]string
 
 func TestReceiver(t *testing.T) {
-	currentTime := time.Now()
+	currentTime := time.Now().UTC()
 	opts := testOps{"resolution": []string{"60"}, "user": []string{"u"}, "password": []string{"p"}}
 	cases := []struct {
 		Name    string
@@ -125,7 +125,7 @@ func receiveInput(opts testOps, msg []byte) ([]*bucket.Bucket, error) {
 	recv.Receive(msg, opts)
 	time.Sleep(2*recv.FlushInterval)
 
-	future := time.Now().Add(time.Minute)
+	future := time.Now().UTC().Add(time.Minute)
 	ch, err := st.Scan(future)
 	if err != nil {
 		return nil, err
