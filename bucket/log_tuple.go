@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/kr/logfmt"
 	"strconv"
+	"strings"
 )
 
 type logTuple struct {
@@ -54,14 +55,11 @@ func (lt *logTuple) String() string {
 }
 
 func (lt *logTuple) Units() string {
-	f, err := lt.Float64()
+	_, err := lt.Float64()
 	if err != nil {
 		return ""
 	}
-	fs := strconv.FormatFloat(f, 'g', 10, 64)
-	fb := []byte(fs)
-	units := lt.Val[len(fb):]
-	return string(units)
+	return strings.TrimFunc(string(lt.Val), trimToChar)
 }
 
 type tuples []*logTuple
@@ -91,4 +89,9 @@ func parseLogData(msg []byte) (tuples, error) {
 		return nil, err
 	}
 	return tups, nil
+}
+
+func trimToChar(r rune) bool {
+	// objective here is to return true if a rune is 0-9 or .
+	return !(r != '.' && r < '0' || r > '9')
 }
