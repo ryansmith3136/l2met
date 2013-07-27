@@ -69,6 +69,43 @@ func (t *tuples) HandleLogfmt(k, v []byte) error {
 	return nil
 }
 
+func (t *tuples) Metric() string {
+	// this method of locating the "measurement" is slightly different to the 
+	// existing format so probably needs more thought.
+	for i := range *t {
+		if bytes.Equal((*t)[i].Key, []byte("measure")) {
+			return (*t)[i].String()
+		}	
+	}
+	return ""
+}
+
+func (t *tuples) MetricSource() string {
+	// The log-runtime-metrics source attribute contains extra information which
+	// changes whenever the dyno is restarted, we need to strip this away to leave
+	// the dyno name.
+	for i := range *t {
+		if bytes.Equal((*t)[i].Key, []byte("source")) {
+			tokens := strings.Split((*t)[i].String(), ".")
+			if len(tokens) == 5 {
+				return strings.Join(tokens[2:4], ".")
+			}
+		}	
+	}
+	return ""
+}
+
+func (t *tuples) Value() (float64, error) {
+	// this method of locating the "value" is slightly different to the 
+	// existing format so probably needs more thought.
+	for i := range *t {
+		if bytes.Equal((*t)[i].Key, []byte("val")) {
+			return (*t)[i].Float64()
+		}	
+	}
+	return 0, errors.New("Unable to locate value tuple.")
+}
+
 func (t *tuples) Source() string {
 	for i := range *t {
 		if bytes.Equal((*t)[i].Key, []byte("source")) {

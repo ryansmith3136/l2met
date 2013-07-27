@@ -14,6 +14,7 @@ type Options map[string][]string
 var (
 	routerPrefix  = "router"
 	measurePrefix = "measure."
+	metricName = "measure"
 )
 
 func NewBuckets(body *bufio.Reader, opts Options) <-chan *Bucket {
@@ -31,6 +32,7 @@ func NewBuckets(body *bufio.Reader, opts Options) <-chan *Bucket {
 			}
 			parseHkRouter(o, opts, header, tups)
 			parseMeasurements(o, opts, header, tups)
+			parseMetrics(o, opts, header, tups)
 		}
 	}(out)
 	return out
@@ -82,6 +84,27 @@ func parseHkRouter(out chan *Bucket, opts Options, header *lpx.Header, tups tupl
 			continue
 		}
 		val, err := tups[i].Float64()
+		if err != nil {
+			continue
+		}
+		out <- &Bucket{Id: id, Vals: []float64{val}}
+	}
+	return nil
+}
+
+func parseMetrics(out chan *Bucket, opts Options, header *lpx.Header, tups tuples) error {	
+	for i := range tups {
+		if tups[i].Name() != metricName {
+			continue
+		}
+		id := new(Id)
+		id.Resolution = parseResolution(opts)
+		id.Time = parseTime(id.Resolution, header.Time)
+		id.User = opts["user"][0]
+		id.Pass = opts["password"][0]
+		id.Name = buildPrefix(opts, tups[i].String())
+		id.Source = tups.MetricSource()
+		val, err := tups.Value()
 		if err != nil {
 			continue
 		}
