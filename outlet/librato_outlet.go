@@ -1,16 +1,17 @@
 package outlet
 
 import (
-	"runtime"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/ryandotsmith/l2met/bucket"
+	"github.com/ryandotsmith/l2met/metchan"
 	"github.com/ryandotsmith/l2met/utils"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"runtime"
 	"time"
 )
 
@@ -72,6 +73,7 @@ type LibratoOutlet struct {
 	rdr Reader
 	// Number of times to retry HTTP requests to librato's api.
 	numRetries int
+	Mchan      *metchan.Channel
 }
 
 func NewLibratoOutlet(sz, concur, retries int, r Reader) *LibratoOutlet {
@@ -167,15 +169,18 @@ func (l *LibratoOutlet) outlet() {
 		//Since a playload contains all metrics for
 		//a unique librato user/pass, we can extract the user/pass
 		//from any one of the payloads.
-		sample := payloads[0]
-		reqBody := new(LibratoRequest)
-		reqBody.Gauges = payloads
-		j, err := json.Marshal(reqBody)
+		user := payloads[0].User
+		pass := payloads[0].Pass
+		libratoReq := &LibratoRequest{payloads}
+		j, err := json.Marshal(libratoReq)
 		if err != nil {
-			fmt.Printf("at=json-error error=%s user=%s\n", err, sample.User)
+			fmt.Printf("at=json error=%s user=%s\n", err, user)
 			continue
 		}
-		l.postWithRetry(sample.User, sample.Pass, bytes.NewBuffer(j))
+		body := bytes.NewBuffer(j)
+		if err := l.postWithRetry(user, pass, body); err != nil {
+			fmt.Printf("measure.outlet.drop user=%s\n", user)
+		}
 	}
 }
 
@@ -195,7 +200,7 @@ func (l *LibratoOutlet) postWithRetry(u, p string, body *bytes.Buffer) error {
 }
 
 func (l *LibratoOutlet) post(u, p string, body *bytes.Buffer) error {
-	defer utils.MeasureT("librato-post", time.Now())
+	defer l.Mchan.Measure("outlet.post", time.Now())
 	req, err := http.NewRequest("POST", libratoUrl, body)
 	if err != nil {
 		return err

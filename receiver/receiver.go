@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/ryandotsmith/l2met/bucket"
+	"github.com/ryandotsmith/l2met/metchan"
 	"github.com/ryandotsmith/l2met/store"
 	"github.com/ryandotsmith/l2met/utils"
 	"runtime"
@@ -54,6 +55,8 @@ type Receiver struct {
 	Store store.Store
 	//Count the number of times we accept a bucket.
 	numBuckets uint64
+	// Publish receiver metrics on this channel.
+	Mchan *metchan.Channel
 }
 
 func NewReceiver(sz, c int, i time.Duration, s store.Store) *Receiver {
@@ -105,6 +108,7 @@ func (r *Receiver) Stop() {
 func (r *Receiver) accept() {
 	for lreq := range r.Inbox {
 		rdr := bufio.NewReader(bytes.NewReader(lreq.Body))
+		startParse := time.Now()
 		for bucket := range bucket.NewBuckets(rdr, lreq.Opts) {
 			now := time.Now().Truncate(bucket.Id.Resolution)
 			if bucket.Id.Time.Equal(now) {
@@ -114,6 +118,7 @@ func (r *Receiver) accept() {
 					bucket.Id.Time, now)
 			}
 		}
+		r.Mchan.Measure("receiver.accept", startParse)
 	}
 }
 
@@ -147,9 +152,11 @@ func (r *Receiver) transfer() {
 
 func (r *Receiver) outlet() {
 	for b := range r.Outbox {
+		startPut := time.Now()
 		if err := r.Store.Put(b); err != nil {
 			fmt.Printf("error=%s\n", err)
 		}
+		r.Mchan.Measure("reciever.outlet", startPut)
 	}
 }
 

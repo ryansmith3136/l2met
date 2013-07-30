@@ -3,6 +3,7 @@ package receiver
 import (
 	"fmt"
 	"github.com/ryandotsmith/l2met/bucket"
+	"github.com/ryandotsmith/l2met/metchan"
 	"github.com/ryandotsmith/l2met/store"
 	"testing"
 	"time"
@@ -129,6 +130,7 @@ func fmtLog(t time.Time, procid, msg string) []byte {
 func receiveInput(opts testOps, msg []byte) ([]*bucket.Bucket, error) {
 	st := store.NewMemStore()
 	recv := NewReceiver(100, 1, time.Millisecond*5, st)
+	recv.Mchan = new(metchan.Channel)
 	recv.Start()
 	defer recv.Stop()
 

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type D struct {
 	Outlet          string
 	RedisHost       string
 	RedisPass       string
+	MetchanUrl      *url.URL
 	Secrets         []string
 	BufferSize      int
 	Concurrency     int
@@ -69,6 +71,14 @@ func New() *D {
 		"Enable verbose log output.")
 
 	d.RedisHost, d.RedisPass, _ = parseRedisUrl(env("REDIS_URL"))
+	d.Secrets = strings.Split(mustenv("SECRETS"), ":")
+
+	if len(env("METCHAN_URL")) > 0 {
+		url, err := url.Parse(env("METCHAN_URL"))
+		if err == nil {
+			d.MetchanUrl = url
+		}
+	}
 
 	return d
 }
@@ -76,6 +86,14 @@ func New() *D {
 // Helper Function
 func env(n string) string {
 	return os.Getenv(n)
+}
+
+func mustenv(n string) string {
+	v := env(n)
+	if len(v) == 0 {
+		panic("Must set: " + n)
+	}
+	return v
 }
 
 // Helper Function

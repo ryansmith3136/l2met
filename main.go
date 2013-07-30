@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"github.com/ryandotsmith/l2met/auth"
 	"github.com/ryandotsmith/l2met/conf"
+	"github.com/ryandotsmith/l2met/metchan"
 	"github.com/ryandotsmith/l2met/outlet"
 	"github.com/ryandotsmith/l2met/receiver"
 	"github.com/ryandotsmith/l2met/store"
-	"github.com/ryandotsmith/l2met/utils"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -29,6 +29,10 @@ func main() {
 	cfg = conf.New()
 	flag.Parse()
 
+	// Can be passed to other modules
+	// as an internal metrics channel.
+	mchan := metchan.New(cfg.Verbose, cfg.MetchanUrl)
+
 	// The store will be used by receivers and outlets.
 	var st store.Store
 	if len(cfg.RedisHost) > 0 {
@@ -46,8 +50,10 @@ func main() {
 	case "librato":
 		rdr := outlet.NewBucketReader(cfg.BufferSize,
 			cfg.Concurrency, cfg.FlushtInterval, st)
+		rdr.Mchan = mchan
 		outlet := outlet.NewLibratoOutlet(cfg.BufferSize,
 			cfg.Concurrency, cfg.NumOutletRetry, rdr)
+		outlet.Mchan = mchan
 		outlet.Start()
 		if cfg.Verbose {
 			go outlet.Report()
@@ -57,6 +63,7 @@ func main() {
 			Store:    st,
 			Interval: cfg.FlushtInterval,
 		}
+		rdr.Mchan = mchan
 		outlet := outlet.NewGraphiteOutlet(cfg.BufferSize, rdr)
 		outlet.Start()
 	default:
@@ -77,6 +84,7 @@ func main() {
 	if cfg.UsingReciever {
 		recv := receiver.NewReceiver(cfg.BufferSize,
 			cfg.Concurrency, cfg.FlushtInterval, st)
+		recv.Mchan = mchan
 		recv.Start()
 		if cfg.Verbose {
 			go recv.Report()
@@ -103,7 +111,7 @@ func main() {
 				v.Add("user", user)
 				v.Add("password", pass)
 				recv.Receive(b, v)
-				utils.MeasureT("http-receiver", startReceiveT)
+				mchan.Measure("http.handle", startReceiveT)
 			})
 	}
 
