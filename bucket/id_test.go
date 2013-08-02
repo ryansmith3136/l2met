@@ -1,60 +1,32 @@
 package bucket
 
 import (
-	"fmt"
+	"bytes"
 	"testing"
 	"time"
 )
 
-func TestDecodeId(t *testing.T) {
-	id := Id{time.Now(), time.Minute, "user", "pass", "name", "units", "source"}
-	expected, err := DecodeId(id.Encode())
-	if err != nil {
-		t.FailNow()
-	}
-	if expected.Source != "source" {
-		fmt.Printf("expected=%d actual=%d\n", "source", expected.Source)
-		t.FailNow()
-	}
-	if expected.Name != "name" {
-		fmt.Printf("expected=%d actual=%d\n", "name", expected.Name)
-		t.FailNow()
-	}
-	if expected.User != "user" {
-		fmt.Printf("expected=%d actual=%d\n", "user", expected.User)
-		t.FailNow()
-	}
-	if expected.Pass != "pass" {
-		fmt.Printf("expected=%d actual=%d\n", "pass", expected.Pass)
-		t.FailNow()
-	}
-	if expected.Resolution != time.Minute {
-		fmt.Printf("expected=%d actual=%d\n", time.Minute, expected.Resolution)
-		t.FailNow()
-	}
+var idTest = []struct {
+	id *Id
+	name string
+}{
+	{
+		&Id{Name: "hello world"},
+		"hello world",
+	},
 }
 
-func TestDecodeIdWithoutSource(t *testing.T) {
-	id := Id{time.Now(), time.Minute, "user", "pass", "name", "units", ""}
-	expected, err := DecodeId(id.Encode())
-	if err != nil {
-		t.FailNow()
-	}
-	if expected.Name != "name" {
-		fmt.Printf("expected=%d actual=%d\n", "name", expected.Name)
-		t.FailNow()
-	}
-	if expected.User != "user" {
-		fmt.Printf("expected=%d actual=%d\n", "user", expected.User)
-		t.FailNow()
-	}
-	if expected.Pass != "pass" {
-		fmt.Printf("expected=%d actual=%d\n", "pass", expected.Pass)
-		t.FailNow()
-	}
-	if expected.Resolution != time.Minute {
-		fmt.Printf("expected=%d actual=%d\n", time.Minute, expected.Resolution)
-		t.FailNow()
+func TestDecodeId(t *testing.T) {
+	for _, ts := range idTest {
+		b, err := ts.id.Encode()
+		if err != nil {
+			t.Error(err)
+		}
+		other := new(Id)
+		other.Decode(bytes.NewBuffer(b))
+		if other.Name != ts.name {
+			t.Errorf("actual=%s\n", other.Name)
+		}
 	}
 }
 

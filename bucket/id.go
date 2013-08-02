@@ -1,18 +1,11 @@
 package bucket
 
 import (
-	"errors"
+	"bytes"
+	"encoding/gob"
 	"github.com/ryandotsmith/l2met/utils"
-	"strconv"
-	"strings"
 	"time"
 )
-
-// TODO(ryandotsmith): This is an awful hack.
-// It is typical to use a `:` to compose keys in redis,
-// however, it is possible for a Id.Name to have a `:`.
-// Thus we pick a very unlikely char to compose keys in redis.
-const keySep = "→"
 
 type Id struct {
 	Time       time.Time
@@ -22,54 +15,19 @@ type Id struct {
 	Name       string
 	Units      string
 	Source     string
+	Type       string
 }
 
-func DecodeId(s string) (*Id, error) {
-	parts := strings.Split(s, keySep)
-	if len(parts) < 5 {
-		return nil, errors.New("bucket: Unable to parse bucket key.")
-	}
-
-	t, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	ts := time.Unix(t, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	id := new(Id)
-	id.Time = ts
-	id.Resolution = time.Duration(res)
-	id.User = parts[2]
-	id.Pass = parts[3]
-	id.Name = parts[4]
-	id.Units = parts[5]
-	if len(parts) > 6 {
-		id.Source = parts[6]
-	}
-	return id, nil
+func (id *Id) Decode(b *bytes.Buffer) error {
+	dec := gob.NewDecoder(b)
+	return dec.Decode(id)
 }
 
-func (id *Id) Encode() string {
-	s := ""
-	s += strconv.FormatInt(id.Time.Unix(), 10) + keySep
-	s += strconv.FormatInt(int64(id.Resolution), 10) + keySep
-	s += id.User + keySep
-	s += id.Pass + keySep
-	s += id.Name + keySep
-	s += id.Units
-	if len(id.Source) > 0 {
-		s += keySep + id.Source
-	}
-	return s
+func (id *Id) Encode() ([]byte, error) {
+	var res bytes.Buffer
+	enc := gob.NewEncoder(&res)
+	err := enc.Encode(id)
+	return res.Bytes(), err
 }
 
 // The number of time units returned represents

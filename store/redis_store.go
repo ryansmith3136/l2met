@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
@@ -90,9 +91,11 @@ func (s *RedisStore) Scan(schedule time.Time) (<-chan *bucket.Bucket, error) {
 		var members []string
 		redis.Scan(reply, &members, &delCount)
 		for _, member := range members {
-			id, err := bucket.DecodeId(member)
+			id := new(bucket.Id)
+			err := id.Decode(bytes.NewBufferString(member))
 			if err != nil {
-				fmt.Printf("at=%q error=%s\n", "bucket-store-parse-key", err)
+				fmt.Printf("at=%q error=%s\n",
+					"bucket-store-parse-key", err)
 				continue
 			}
 			bucketReady := id.Time.Add(id.Resolution)
@@ -112,12 +115,15 @@ func (s *RedisStore) putback(id *bucket.Id) error {
 	defer utils.MeasureT("bucket.putback", time.Now())
 	rc := s.redisPool.Get()
 	defer rc.Close()
-	key := id.Encode()
+	key, err := id.Encode()
+	if err != nil {
+		return err
+	}
 	partition := s.bucketPartition([]byte(key))
 	rc.Send("MULTI")
 	rc.Send("SADD", partition, key)
 	rc.Send("EXPIRE", partition, 300)
-	_, err := rc.Do("EXEC")
+	_, err = rc.Do("EXEC")
 	if err != nil {
 		return err
 	}
@@ -131,9 +137,12 @@ func (s *RedisStore) Put(b *bucket.Bucket) error {
 	defer rc.Close()
 
 	b.Lock()
-	key := b.Id.Encode()
+	key, err := b.Id.Encode()
 	value := b.Vals
 	b.Unlock()
+	if err != nil {
+		return err
+	}
 
 	//TODO(ryandotsmith): Ensure consistent keys are being written.
 	partition := s.bucketPartition([]byte(key))
@@ -142,7 +151,7 @@ func (s *RedisStore) Put(b *bucket.Bucket) error {
 	rc.Send("EXPIRE", key, 300)
 	rc.Send("SADD", partition, key)
 	rc.Send("EXPIRE", partition, 300)
-	_, err := rc.Do("EXEC")
+	_, err = rc.Do("EXEC")
 	if err != nil {
 		return err
 	}
@@ -154,7 +163,11 @@ func (s *RedisStore) Get(b *bucket.Bucket) error {
 	rc := s.redisPool.Get()
 	defer rc.Close()
 
-	reply, err := redis.Values(rc.Do("LRANGE", b.Id.Encode(), 0, -1))
+	key, err := b.Id.Encode()
+	if err != nil {
+		return err
+	}
+	reply, err := redis.Values(rc.Do("LRANGE", key, 0, -1))
 	if err != nil {
 		return err
 	}

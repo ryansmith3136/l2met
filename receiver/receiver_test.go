@@ -43,7 +43,7 @@ func TestReceiver(t *testing.T) {
 		{
 			"idiomatic",
 			opts,
-			fmtLog(currentTime, "app", "measure.a"),
+			fmtLog(currentTime, "app", "measure#a"),
 			[]*bucket.Bucket{
 				testBucket("a", "", "u", "p", currentTime, time.Minute, []float64{1}),
 			},
@@ -51,7 +51,7 @@ func TestReceiver(t *testing.T) {
 		{
 			"change in resolution",
 			opts,
-			fmtLog(currentTime, "app", "measure.a"),
+			fmtLog(currentTime, "app", "measure#a"),
 			[]*bucket.Bucket{
 				testBucket("a", "", "u", "p", currentTime, time.Second, []float64{1}),
 			},
@@ -59,7 +59,7 @@ func TestReceiver(t *testing.T) {
 		{
 			"with value",
 			opts,
-			fmtLog(currentTime, "app", "measure.a=1"),
+			fmtLog(currentTime, "app", "measure#a=1"),
 			[]*bucket.Bucket{
 				testBucket("a", "", "u", "p", currentTime, time.Minute, []float64{1}),
 			},
@@ -67,7 +67,7 @@ func TestReceiver(t *testing.T) {
 		{
 			"with float value",
 			opts,
-			fmtLog(currentTime, "app", "measure.a=0.001"),
+			fmtLog(currentTime, "app", "measure#a=0.001"),
 			[]*bucket.Bucket{
 				testBucket("a", "", "u", "p", currentTime, time.Minute, []float64{0.001}),
 			},
@@ -75,10 +75,26 @@ func TestReceiver(t *testing.T) {
 		{
 			"multiple values",
 			opts,
-			fmtLog(currentTime, "app", "measure.a=1 measure.b=2"),
+			fmtLog(currentTime, "app", "measure#a=1 measure#b=2"),
 			[]*bucket.Bucket{
 				testBucket("a", "", "u", "p", currentTime, time.Minute, []float64{1}),
 				testBucket("b", "", "u", "p", currentTime, time.Minute, []float64{2}),
+			},
+		},
+		{
+			"counters",
+			opts,
+			fmtLog(currentTime, "app", "count#a=1"),
+			[]*bucket.Bucket{
+				testBucket("a", "", "u", "p", currentTime, time.Minute, []float64{1}),
+			},
+		},
+		{
+			"samples",
+			opts,
+			fmtLog(currentTime, "app", "sample#a=1"),
+			[]*bucket.Bucket{
+				testBucket("a", "", "u", "p", currentTime, time.Minute, []float64{1}),
 			},
 		},
 	}

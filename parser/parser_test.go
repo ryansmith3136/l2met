@@ -13,7 +13,7 @@ var parseTest = []struct {
 	names []string
 }{
 	{
-		`88 <174>1 2013-07-22T00:06:26-00:00 somehost name test - measure.hello=1 measure.world=1ms\n`,
+		`88 <174>1 2013-07-22T00:06:26-00:00 somehost name test - measure#hello=1 measure#world=1ms\n`,
 		options{"user": []string{"u"}, "password": []string{"p"}},
 		[]string{"hello", "world"},
 	},

@@ -16,7 +16,9 @@ type options map[string][]string
 
 var (
 	routerPrefix  = "router"
-	measurePrefix = "measure."
+	measurePrefix = "measure#"
+	samplePrefix = "sample#"
+	counterPrefix = "count#"
 )
 
 type parser struct {
@@ -45,33 +47,58 @@ func (p *parser) parse() {
 			continue
 		}
 		for _, t := range p.ld.Tuples {
+			p.handleCounters(t)
+			p.handleSamples(t)
 			p.handleHkRouter(t)
 			p.handlMeasurements(t)
 		}
 	}
 }
 
+func (p *parser) handleSamples(t *tuple) error {
+	if !strings.HasPrefix(t.Name(), samplePrefix) {
+		return nil
+	}
+	id := new(bucket.Id)
+	p.buildId(id, t)
+	id.Type = "sample"
+	val, err := t.Float64()
+	if err != nil {
+		return err
+	}
+	p.out <- &bucket.Bucket{Id: id, Vals: []float64{val}}
+	return nil
+}
+
+func (p *parser) handleCounters(t *tuple) error {
+	if !strings.HasPrefix(t.Name(), counterPrefix) {
+		return nil
+	}
+	id := new(bucket.Id)
+	p.buildId(id, t)
+	id.Type = "counter"
+	val, err := t.Float64()
+	if err != nil {
+		return err
+	}
+	p.out <- &bucket.Bucket{Id: id, Vals: []float64{val}}
+	return nil
+}
+
+
+
 func (p *parser) handlMeasurements(t *tuple) error {
 	if !strings.HasPrefix(t.Name(), measurePrefix) {
 		return nil
 	}
 	id := new(bucket.Id)
-	id.Resolution = p.Resolution()
-	id.Time = p.Time()
-	id.User = p.User()
-	id.Pass = p.Pass()
-	id.Name = p.Prefix(t.Name())
-	id.Units = t.Units()
-	id.Source = p.ld.Source()
+	p.buildId(id, t)
+	id.Type = "measurement"
 	val, err := t.Float64()
 	if err != nil {
 		return err
 	}
-	p.out <- &bucket.Bucket{
-		Id: id,
-		Vals: []float64{val},
-		Emtr: bucket.MeasureEmitter,
-	}
+	p.out <- &bucket.Bucket{Id: id, Vals: []float64{val}}
 	return nil
 }
 
@@ -80,12 +107,8 @@ func (p *parser) handleHkRouter(t *tuple) error {
 		return nil
 	}
 	id := new(bucket.Id)
-	id.Resolution = p.Resolution()
-	id.Time = p.Time()
-	id.User = p.User()
-	id.Pass = p.Pass()
-	id.Source = p.ld.Source()
-	id.Units = t.Units()
+	p.buildId(id, t)
+	id.Type = "measurement"
 	switch t.Name() {
 	case "bytes":
 		id.Name = p.Prefix("router.bytes")
@@ -100,18 +123,31 @@ func (p *parser) handleHkRouter(t *tuple) error {
 	if err != nil {
 		return err
 	}
-	p.out <- &bucket.Bucket{
-		Id: id,
-		Vals: []float64{val},
-		Emtr: bucket.MeasureEmitter,
-	}
+	p.out <- &bucket.Bucket{Id: id, Vals: []float64{val}}
 	return nil
+}
+
+func (p *parser) buildId(id *bucket.Id, t *tuple) {
+	id.Resolution = p.Resolution()
+	id.Time = p.Time()
+	id.User = p.User()
+	id.Pass = p.Pass()
+	id.Name = p.Prefix(t.Name())
+	id.Units = t.Units()
+	id.Source = p.ld.Source()
+	return
 }
 
 func (p *parser) Prefix(suffix string) string {
 	//Remove measure. from the name if present.
 	if strings.HasPrefix(suffix, measurePrefix) {
 		suffix = suffix[len(measurePrefix):]
+	}
+	if strings.HasPrefix(suffix, counterPrefix) {
+		suffix = suffix[len(counterPrefix):]
+	}
+	if strings.HasPrefix(suffix, samplePrefix) {
+		suffix = suffix[len(samplePrefix):]
 	}
 	pre, present := p.opts["prefix"]
 	if !present {

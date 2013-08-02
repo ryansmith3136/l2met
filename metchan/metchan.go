@@ -68,7 +68,7 @@ func New(verbose bool, u *url.URL) *Channel {
 	c.outbox = make(chan *libratoMetric, 10)
 
 	// Default flush interval.
-	c.FlushInterval = time.Second
+	c.FlushInterval = time.Minute
 
 	return c
 }
