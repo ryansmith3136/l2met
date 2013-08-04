@@ -82,7 +82,7 @@ else
 	echo "Unable to update config: SECRETS=$secret"
 fi
 
-echo 'web: ./l2met -outlet="librato"' > Procfile
+echo 'web: ./l2met -outlet=true -port=$PORT' > Procfile
 
 git add .
 git commit -am "init"
