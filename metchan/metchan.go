@@ -78,8 +78,10 @@ func New(verbose bool, u *url.URL) *Channel {
 }
 
 func (c *Channel) Start() {
-	go c.scheduleFlush()
-	go c.outlet()
+	if c.enabled {
+		go c.scheduleFlush()
+		go c.outlet()
+	}
 }
 
 // Provide the time at which you started your measurement.
