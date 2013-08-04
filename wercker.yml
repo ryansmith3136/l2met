@@ -1,0 +1,28 @@
+box: wercker/golang
+services:
+  - wercker/redis
+build:
+  steps:
+    - wercker/setup-go-workspace
+
+    - script:
+        name: Populate cache
+        code: |-
+            # WARNING: If you do not use the pjvds/golang box:
+            # before you copy and use this step in your own build pipeline
+            # make sure you set $WERCKER_SOURCE_DIR to the package directory
+            # or your project, like: $GOPATH/github.com/pjvds/httpcallback.io
+            if test -d "$WERCKER_CACHE_DIR/go-pkg-cache"; then rsync -avzv --exclude "$WERCKER_SOURCE_DIR" "$WERCKER_CACHE_DIR/go-pkg-cache/" "$GOPATH/" ; fi
+
+    - script:
+        name: Get dependencies
+        code: go get -v ./...
+
+    - script:
+        name: Build
+        code: |
+          go build -v ./...
+
+    - script:
+        name: Test
+        code: go test ./...

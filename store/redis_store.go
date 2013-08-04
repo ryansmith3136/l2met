@@ -28,9 +28,10 @@ type RedisStore struct {
 }
 
 func NewRedisStore(server, pass string, maxPartitions uint64) *RedisStore {
+	s := strings.Trim(server, "redis://")
 	return &RedisStore{
 		maxPartitions: maxPartitions,
-		redisPool:     initRedisPool(server, pass),
+		redisPool:     initRedisPool(s, pass),
 	}
 }
 
