@@ -1,7 +1,9 @@
 package store
 
 import (
+	"time"
 	"github.com/ryandotsmith/l2met/bucket"
+	"github.com/ryandotsmith/redisync"
 	"testing"
 )
 
@@ -27,5 +29,24 @@ func TestRedisGet(t *testing.T) {
 			t.Errorf("b1[%d]= %f and b2[%d] = %f",
 				i, b1.Vals[i], i, b2.Vals[i])
 		}
+	}
+}
+
+func TestRedisLockPartition(t *testing.T) {
+	numPartitions := uint64(1)
+	st := NewRedisStore("localhost:6379", "", numPartitions)
+	st.flush()
+
+	done := make(chan *redisync.Mutex)
+	wait := time.After(time.Second)
+	go func() {
+		rc := st.redisPool.Get()
+		defer rc.Close()
+		done <- st.lockPartition(rc)
+	}()
+	select {
+	case <-done:
+	case <-wait:
+		t.Errorf("Unable to lock partition.")
 	}
 }

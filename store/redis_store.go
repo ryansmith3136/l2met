@@ -7,6 +7,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/ryandotsmith/l2met/bucket"
 	"github.com/ryandotsmith/l2met/utils"
+	"github.com/ryandotsmith/redisync"
 	"hash/crc64"
 	"strconv"
 	"strings"
@@ -69,16 +70,13 @@ func (s *RedisStore) Health() bool {
 
 func (s *RedisStore) Scan(schedule time.Time) (<-chan *bucket.Bucket, error) {
 	retBuckets := make(chan *bucket.Bucket)
-	p, err := s.lockPartition()
-	if err != nil {
-		return retBuckets, err
-	}
-	partition := partitionPrefix + "." + strconv.Itoa(int(p))
+	rc := s.redisPool.Get()
+	mut := s.lockPartition(rc)
+	partition := partitionPrefix  + "." + mut.Name
 	go func(out chan *bucket.Bucket) {
-		rc := s.redisPool.Get()
+		defer mut.Unlock(rc)
 		defer rc.Close()
 		defer close(out)
-		defer s.unlockPartition(p)
 		rc.Send("MULTI")
 		rc.Send("SMEMBERS", partition)
 		rc.Send("DEL", partition)
@@ -187,44 +185,17 @@ func (s *RedisStore) bucketPartition(b []byte) string {
 	return fmt.Sprintf("%s.%d", partitionPrefix, check%s.MaxPartitions())
 }
 
-func (s *RedisStore) lockPartition() (uint64, error) {
+func (s *RedisStore) lockPartition(c redis.Conn) *redisync.Mutex {
 	for {
 		for p := uint64(0); p < s.MaxPartitions(); p++ {
 			name := fmt.Sprintf("%s.%d", lockPrefix, p)
-			//TODO(ryandotsmith): remove magic number.
-			locked, err := s.writeLock(name, 5)
-			if err != nil {
-				return 0, err
-			}
-			if locked {
-				return p, nil
+			mut := redisync.NewMutex(name, time.Minute)
+			if mut.TryLock(c) {
+				return mut
 			}
 		}
 		time.Sleep(time.Second * 5)
 	}
-	return 0, errors.New("LockPartition impossible broke the loop.")
-}
-
-func (s *RedisStore) writeLock(name string, ttl uint64) (bool, error) {
-	rc := s.redisPool.Get()
-	defer rc.Close()
-
-	newTime := time.Now().Unix() + int64(ttl) + 1
-	old, err := redis.Int(rc.Do("GETSET", name, newTime))
-	// If the ErrNil is present, the old value is set to 0.
-	if err != nil && err != redis.ErrNil && old == 0 {
-		return false, err
-	}
-	// If the new value is greater than the old
-	// value, then the old lock is expired.
-	return newTime > int64(old), nil
-}
-
-func (s *RedisStore) unlockPartition(p uint64) error {
-	rc := s.redisPool.Get()
-	defer rc.Close()
-	_, err := rc.Do("DEL", lockPrefix+"."+strconv.Itoa(int(p)))
-	return err
 }
 
 func (s *RedisStore) flush() {
