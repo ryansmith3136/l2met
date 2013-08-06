@@ -1,0 +1,35 @@
+#!/bin/bash
+
+USAGE='Usage: sign librato-email@domain.com librato-api-token'
+
+if [ ! "$1" ]; then
+    echo 'Missing Librato email.'
+    echo $USAGE
+    exit 1
+fi
+
+if [ ! "$2" ]; then
+    echo 'Missing Librato api token.'
+    echo $USAGE
+    exit 1
+fi
+
+domain_name="`heroku apps:info -s 2> /dev/null | grep domain_name`" 
+if [ $? -ne 0 ]; then
+  echo "Unable to determine heroku app's domain name, make sure you're running this script from your app's repo"
+  exit 2
+fi
+
+config="`heroku config -s 2> /dev/null`"
+
+if [ $? -ne 0 ]; then
+  echo "Could not fetch app config, make sure you're running this script from your app's repo"
+  exit 2
+fi
+
+export $domain_name
+export $config
+
+token=$(curl -s "https://${domain_name}/sign" --data "$1:$2" -u "$SECRETS:")
+
+echo "Drain URL: https://$token@${domain_name}/logs"
