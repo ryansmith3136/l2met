@@ -42,6 +42,8 @@ Before working on a new feature, send your proposal to the [mailing list](https:
 ### Running Tests
 [![Build Status](https://drone.io/github.com/ryandotsmith/l2met/status.png)](https://drone.io/github.com/ryandotsmith/l2met/latest)
 ```bash
+$ ./redis-server --version
+Redis server v=2.6.14 sha=f2f2b4eb:0 malloc=libc bits=64
 $ go version
 go version go1.1.1 darwin/amd64
 ```
@@ -51,5 +53,7 @@ $ git clone git://github.com/ryandotsmith/l2met.git
 $ cd l2met
 $ export SECRETS=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | openssl base64)
 $ export TZ=UTC
+$ export REDIS_URL=redis://localhost:6379
+$ ./redis-server &
 $ go test ./...
 ```
