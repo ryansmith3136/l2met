@@ -14,6 +14,7 @@ import (
 type testOps map[string][]string
 
 var currentTime = time.Now()
+
 var opts = testOps{
 	"resolution": []string{"60"},
 	"auth":       []string{"abc123"},
@@ -124,7 +125,7 @@ func TestReceiver(t *testing.T) {
 	for _, ts := range integrationTest {
 		actual, err := receiveInput(ts.opts, ts.logLine)
 		if err != nil {
-			t.Errorf("error=%s\n", err)
+			t.Fatalf("error=%s\n", err)
 		}
 		expected := ts.buckets
 		if len(actual) != len(expected) {
@@ -152,6 +153,7 @@ func build(name, source, auth string, t time.Time, res time.Duration, vals []flo
 	id.Source = source
 	id.Auth = auth
 	id.Time = t.Truncate(res)
+	id.ReadyAt = t
 	id.Resolution = res
 	return &bucket.Bucket{Id: id, Vals: vals}
 }
@@ -171,26 +173,34 @@ func fmtLog(t time.Time, procid, msg string) []byte {
 }
 
 func receiveInput(opts testOps, msg []byte) ([]*bucket.Bucket, error) {
-	st := store.NewMemStore()
 	cfg := &conf.D{
 		Concurrency:      1,
 		BufferSize:       10,
 		FlushInterval:    time.Millisecond * 5,
 		ReceiverDeadline: 2,
+		MaxPartitions:    1,
+		RedisHost:        "localhost:6379",
 	}
+	st := store.NewRedisStore(cfg)
+	st.Flush()
+	st.Mchan = new(metchan.Channel)
 	recv := receiver.NewReceiver(cfg, st)
 	recv.Mchan = new(metchan.Channel)
 	recv.Start()
 	recv.Receive(msg, opts)
 	recv.Wait()
-
-	future := time.Now().Add(time.Minute)
-	ch, err := st.Scan(future)
+	d, err := time.ParseDuration(opts["resolution"][0] + "s")
+	if err != nil {
+		return nil, err
+	}
+	schedule := currentTime.Add(d).Truncate(d)
+	ch, err := st.Scan(schedule)
 	if err != nil {
 		return nil, err
 	}
 	var buckets []*bucket.Bucket
 	for b := range ch {
+		st.Get(b)
 		buckets = append(buckets, b)
 	}
 	return buckets, nil

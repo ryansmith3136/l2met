@@ -12,5 +12,6 @@ type Store interface {
 	Put(*bucket.Bucket) error
 	Get(*bucket.Bucket) error
 	Scan(time.Time) (<-chan *bucket.Bucket, error)
+	Now() time.Time
 	Health() bool
 }

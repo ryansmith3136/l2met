@@ -3,17 +3,29 @@ package bucket
 import (
 	"bytes"
 	"encoding/gob"
+	"hash/crc64"
 	"time"
 )
+
+var partitionTable = crc64.MakeTable(crc64.ISO)
 
 type Id struct {
 	Time       time.Time
 	Resolution time.Duration
 	Auth       string
+	ReadyAt    time.Time
 	Name       string
 	Units      string
 	Source     string
 	Type       string
+}
+
+func (id *Id) Partition(max uint64) uint64 {
+	b, err := id.Encode()
+	if err != nil {
+		panic(err)
+	}
+	return crc64.Checksum(b, partitionTable) % max
 }
 
 func (id *Id) Decode(b *bytes.Buffer) error {

@@ -24,6 +24,10 @@ func (m *MemStore) MaxPartitions() uint64 {
 	return uint64(1)
 }
 
+func (m *MemStore) Now() time.Time {
+	return time.Now()
+}
+
 func (m *MemStore) Scan(schedule time.Time) (<-chan *bucket.Bucket, error) {
 	m.Lock()
 	//TODO(ryandotsmith): Can we eliminate the magical number?

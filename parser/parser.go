@@ -146,6 +146,7 @@ func (p *parser) buildId(id *bucket.Id, t *tuple) {
 	id.Resolution = p.Resolution()
 	id.Time = p.Time()
 	id.Auth = p.Auth()
+	id.ReadyAt = id.Time.Add(id.Resolution).Truncate(id.Resolution)
 	id.Name = p.Prefix(t.Name())
 	id.Units = t.Units()
 	id.Source = p.SourcePrefix(p.ld.Source())

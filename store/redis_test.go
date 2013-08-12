@@ -13,7 +13,7 @@ func TestRedisGet(t *testing.T) {
 	cfg := &conf.D{MaxPartitions: 1, RedisHost: "localhost:6379"}
 	st := NewRedisStore(cfg)
 	st.Mchan = new(metchan.Channel)
-	st.flush()
+	st.Flush()
 	id := &bucket.Id{Name: "test"}
 	b1 := &bucket.Bucket{
 		Id:   id,
@@ -44,18 +44,21 @@ func TestRedisScan(t *testing.T) {
 	cfg := &conf.D{MaxPartitions: 1, RedisHost: "localhost:6379"}
 	st := NewRedisStore(cfg)
 	st.Mchan = new(metchan.Channel)
-	st.flush()
+	st.Flush()
+
+	schedule := time.Now()
 	id := &bucket.Id{
 		Name:       "test",
-		Time:       time.Now().Add(-1 * time.Minute),
-		Resolution: time.Minute,
+		Time:       time.Now().Add(-1 * time.Second),
+		Resolution: time.Second,
+		ReadyAt:    schedule,
 	}
 	b1 := &bucket.Bucket{
 		Id:   id,
 		Vals: []float64{99.99999, 1, 0.2},
 	}
 	st.Put(b1)
-	bchan, err := st.Scan(time.Now())
+	bchan, err := st.Scan(schedule)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -66,6 +69,7 @@ func TestRedisScan(t *testing.T) {
 	}
 	if len(buckets) != 1 {
 		t.Errorf("expected=1 actual=%d\n", len(buckets))
+		t.FailNow()
 	}
 	if buckets[0].Id.Name != id.Name {
 		t.Errorf("expected id to be equal.")
@@ -76,14 +80,15 @@ func TestRedisLockPartition(t *testing.T) {
 	cfg := &conf.D{MaxPartitions: 1, RedisHost: "localhost:6379"}
 	st := NewRedisStore(cfg)
 	st.Mchan = new(metchan.Channel)
-	st.flush()
+	st.Flush()
 
 	done := make(chan *redisync.Mutex)
 	wait := time.After(time.Second)
 	go func() {
 		rc := st.redisPool.Get()
 		defer rc.Close()
-		done <- st.lockPartition(rc)
+		mut, _ := st.lockPartition(rc)
+		done <- mut
 	}()
 	select {
 	case <-done:

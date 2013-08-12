@@ -9,19 +9,14 @@ import (
 	"github.com/ryandotsmith/l2met/conf"
 	"github.com/ryandotsmith/l2met/metchan"
 	"github.com/ryandotsmith/redisync"
-	"hash/crc64"
 	"strconv"
 	"time"
 )
 
-var lockPrefix, partitionPrefix string
-
-func init() {
-	lockPrefix = "lock"
+const (
+	lockPrefix      = "lock"
 	partitionPrefix = "partition.outlet"
-}
-
-var partitionTable = crc64.MakeTable(crc64.ISO)
+)
 
 func initRedisPool(cfg *conf.D) *redis.Pool {
 	return &redis.Pool{
@@ -59,6 +54,7 @@ func (s *RedisStore) MaxPartitions() uint64 {
 	return s.maxPartitions
 }
 
+// Sends a PING request to Redis.
 func (s *RedisStore) Health() bool {
 	rc := s.redisPool.Get()
 	defer rc.Close()
@@ -69,19 +65,42 @@ func (s *RedisStore) Health() bool {
 	return true
 }
 
+// Reads the TIME from Redis.
+func (s *RedisStore) Now() time.Time {
+	rc := s.redisPool.Get()
+	defer rc.Close()
+	defer s.Mchan.Time("store.time", time.Now())
+	reply, err := redis.Values(rc.Do("TIME"))
+	if err != nil {
+		fmt.Printf("error=redis-time-not-available\n")
+		return time.Now()
+	}
+	sec, err := strconv.Atoi(string(reply[0].([]byte)))
+	if err != nil {
+		fmt.Printf("error=redis-time-not-available\n")
+		return time.Now()
+	}
+	microSec, err := strconv.Atoi(string(reply[1].([]byte)))
+	if err != nil {
+		fmt.Printf("error=redis-time-not-available\n")
+		return time.Now()
+	}
+	return time.Unix(int64(sec), int64(microSec*1000))
+}
+
 func (s *RedisStore) Scan(schedule time.Time) (<-chan *bucket.Bucket, error) {
 	out := make(chan *bucket.Bucket)
 	rc := s.redisPool.Get()
-	mut := s.lockPartition(rc)
-	partition := partitionPrefix + "." + mut.Name
+	mut, n := s.lockPartition(rc)
+	p := namePartition(schedule, n)
 	go func() {
 		defer s.Mchan.Time("store.scan", time.Now())
 		defer rc.Close()
 		defer mut.Unlock(rc)
 		defer close(out)
 		rc.Send("MULTI")
-		rc.Send("SMEMBERS", partition)
-		rc.Send("DEL", partition)
+		rc.Send("SMEMBERS", p)
+		rc.Send("DEL", p)
 		reply, err := redis.Values(rc.Do("EXEC"))
 		if err != nil {
 			fmt.Printf("at=%q error=%s\n", "bucket-store-scan", err)
@@ -90,71 +109,44 @@ func (s *RedisStore) Scan(schedule time.Time) (<-chan *bucket.Bucket, error) {
 		var delCount int64
 		var members []string
 		redis.Scan(reply, &members, &delCount)
-		for _, member := range members {
+		for i := range members {
 			id := new(bucket.Id)
-			err := id.Decode(bytes.NewBufferString(member))
+			err := id.Decode(bytes.NewBufferString(members[i]))
 			if err != nil {
 				fmt.Printf("at=%q error=%s\n",
 					"bucket-store-parse-key", err)
 				continue
 			}
-			bucketReady := id.Time.Add(id.Resolution)
-			if !bucketReady.After(schedule) {
-				out <- &bucket.Bucket{Id: id}
-			} else {
-				if err := s.putback(id); err != nil {
-					fmt.Printf("putback-error=%s\n", err)
-				}
-			}
+			out <- &bucket.Bucket{Id: id}
 		}
 	}()
 	return out, nil
 }
 
-func (s *RedisStore) putback(id *bucket.Id) error {
-	defer s.Mchan.Time("store.putback", time.Now())
-	rc := s.redisPool.Get()
-	defer rc.Close()
-	key, err := id.Encode()
-	if err != nil {
-		return err
-	}
-	partition := s.bucketPartition(key)
-	rc.Send("MULTI")
-	rc.Send("SADD", partition, key)
-	rc.Send("EXPIRE", partition, 300)
-	_, err = rc.Do("EXEC")
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (s *RedisStore) Put(b *bucket.Bucket) error {
 	defer s.Mchan.Time("store.put", time.Now())
-
+	b.Lock()
+	defer b.Unlock()
 	rc := s.redisPool.Get()
 	defer rc.Close()
 
-	b.Lock()
-	key, err := b.Id.Encode()
-	value := b.Vals
-	b.Unlock()
+	idBytes, err := b.Id.Encode()
 	if err != nil {
 		return err
 	}
-	args := make([]interface{}, len(value)+1)
-	args[0] = key
-	for i := range value {
-		x := strconv.FormatFloat(value[i], 'f', 10, 64)
-		args[i+1] = []byte(x)
+	payload := make([]interface{}, len(b.Vals)+1)
+	payload[0] = idBytes
+	for i := range b.Vals {
+		x := strconv.FormatFloat(b.Vals[i], 'f', 10, 64)
+		payload[i+1] = []byte(x)
 	}
-	partition := s.bucketPartition(key)
+
+	p := namePartition(b.Id.ReadyAt, b.Id.Partition(s.maxPartitions))
 	rc.Send("MULTI")
-	rc.Send("RPUSH", args...)
-	rc.Send("EXPIRE", key, 300)
-	rc.Send("SADD", partition, key)
-	rc.Send("EXPIRE", partition, 300)
+	rc.Send("RPUSH", payload...)
+	rc.Send("EXPIRE", payload[0], 300)
+	rc.Send("SADD", p, payload[0])
+	rc.Send("EXPIRE", p, 300)
 	_, err = rc.Do("EXEC")
 	if err != nil {
 		return err
@@ -190,20 +182,23 @@ func (s *RedisStore) Get(b *bucket.Bucket) error {
 	return nil
 }
 
-func (s *RedisStore) bucketPartition(b []byte) string {
-	check := crc64.Checksum(b, partitionTable)
-	name := partitionPrefix + "." + lockPrefix
-	return fmt.Sprintf("%s.%d", name, check%s.MaxPartitions())
+func namePartition(schedule time.Time, n uint64) string {
+	return fmt.Sprintf("%d.%s.%d", schedule.Unix(), partitionPrefix, n)
 }
 
-func (s *RedisStore) lockPartition(c redis.Conn) *redisync.Mutex {
+func nameLock(n uint64) string {
+	return fmt.Sprintf("%s.%d", lockPrefix, n)
+}
+
+// Sleeps until a lock can be acquired.
+// Attempts all locks in the lock space. E.g. [0, maxPartitions)
+func (s *RedisStore) lockPartition(c redis.Conn) (*redisync.Mutex, uint64) {
 	for {
-		for p := uint64(0); p < s.MaxPartitions(); p++ {
-			name := fmt.Sprintf("%s.%d", lockPrefix, p)
-			mut := redisync.NewMutex(name, time.Minute)
+		for n := uint64(0); n < s.MaxPartitions(); n++ {
+			mut := redisync.NewMutex(nameLock(n), time.Minute)
 			if mut.TryLock(c) {
 				s.Mchan.Measure("store.lock-success", 1)
-				return mut
+				return mut, n
 			}
 			s.Mchan.Measure("store.lock-fail", 1)
 		}
@@ -211,7 +206,7 @@ func (s *RedisStore) lockPartition(c redis.Conn) *redisync.Mutex {
 	}
 }
 
-func (s *RedisStore) flush() {
+func (s *RedisStore) Flush() {
 	rc := s.redisPool.Get()
 	defer rc.Close()
 	rc.Do("FLUSHALL")
