@@ -145,8 +145,7 @@ func (p *parser) handleHkRouter(t *tuple) error {
 func (p *parser) buildId(id *bucket.Id, t *tuple) {
 	id.Resolution = p.Resolution()
 	id.Time = p.Time()
-	id.User = p.User()
-	id.Pass = p.Pass()
+	id.Auth = p.Auth()
 	id.Name = p.Prefix(t.Name())
 	id.Units = t.Units()
 	id.Source = p.SourcePrefix(p.ld.Source())
@@ -185,12 +184,8 @@ func (p *parser) Prefix(suffix string) string {
 	return pre[0] + "." + suffix
 }
 
-func (p *parser) User() string {
-	return p.opts["user"][0]
-}
-
-func (p *parser) Pass() string {
-	return p.opts["password"][0]
+func (p *parser) Auth() string {
+	return p.opts["auth"][0]
 }
 
 func (p *parser) Time() time.Time {

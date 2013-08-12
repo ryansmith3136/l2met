@@ -25,8 +25,7 @@ type LibratoMetric struct {
 	Time   int64         `json:"measure_time"`
 	Val    float64       `json:"value"`
 	Source string        `json:"source,omitempty"`
-	User   string        `json:"-"`
-	Pass   string        `json:"-"`
+	Auth   string        `json:"-"`
 	Attr   *libratoAttrs `json:"attributes,omitempty"`
 }
 
@@ -99,8 +98,7 @@ func (b *Bucket) Metric(name string, val float64) *LibratoMetric {
 		Name:   b.Id.Name + "." + name,
 		Source: b.Id.Source,
 		Time:   b.Id.Time.Unix(),
-		User:   b.Id.User,
-		Pass:   b.Id.Pass,
+		Auth:   b.Id.Auth,
 		Val:    val,
 	}
 }

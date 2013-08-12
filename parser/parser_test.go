@@ -16,13 +16,13 @@ var parseTest = []struct {
 	{
 		"simple",
 		`88 <174>1 2013-07-22T00:06:26-00:00 somehost name test - measure#hello=1 measure#world=1ms\n`,
-		options{"user": []string{"u"}, "password": []string{"p"}},
+		options{"auth": []string{"abc123"}},
 		[]string{"hello", "world"},
 	},
 	{
 		"legacy",
 		`70 <174>1 2013-07-22T00:06:26-00:00 somehost name test - measure.hello=1\n`,
-		options{"user": []string{"u"}, "password": []string{"p"}},
+		options{"auth": []string{"abc123"}},
 		[]string{"hello"},
 	},
 }

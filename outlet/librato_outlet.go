@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ryandotsmith/l2met/auth"
 	"github.com/ryandotsmith/l2met/bucket"
 	"github.com/ryandotsmith/l2met/conf"
 	"github.com/ryandotsmith/l2met/metchan"
@@ -98,9 +99,8 @@ func (l *LibratoOutlet) groupByUser() {
 				delete(m, k)
 			}
 		case payload := <-l.conversions:
-			usr := payload.User + ":" + payload.Pass
-			_, present := m[usr]
-			if !present {
+			usr := payload.Auth
+			if _, present := m[usr]; !present {
 				m[usr] = make([]*bucket.LibratoMetric, 1, 300)
 				m[usr][0] = payload
 			} else {
@@ -123,8 +123,11 @@ func (l *LibratoOutlet) outlet() {
 		//Since a playload contains all metrics for
 		//a unique librato user/pass, we can extract the user/pass
 		//from any one of the payloads.
-		user := payloads[0].User
-		pass := payloads[0].Pass
+		user, pass, err := auth.Decrypt(payloads[0].Auth)
+		if err != nil {
+			fmt.Printf("error=%s\n", err)
+			continue
+		}
 		libratoReq := &libratoRequest{payloads}
 		j, err := json.Marshal(libratoReq)
 		if err != nil {

@@ -9,8 +9,7 @@ import (
 type Id struct {
 	Time       time.Time
 	Resolution time.Duration
-	User       string
-	Pass       string
+	Auth       string
 	Name       string
 	Units      string
 	Source     string

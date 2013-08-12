@@ -68,20 +68,35 @@ func main() {
 					http.Error(w, "Invalid Request", 400)
 					return
 				}
-				user, pass, err := auth.ParseAndDecrypt(r)
+				// If we can decrypt the authentication
+				// we know it is valid and thus good enought
+				// for our receiver. Later, another routine
+				// can extract the username and password from
+				// the auth to use it against the Librato API.
+				authLine, ok := r.Header["Authorization"]
+				if !ok && len(authLine) > 0 {
+					http.Error(w, "Missing Auth.", 400)
+					return
+				}
+				parseRes, err := auth.Parse(authLine[0])
+				if err != nil {
+					http.Error(w, "Fail: Parse auth.", 400)
+					return
+				}
+				_, _, err = auth.Decrypt(parseRes)
 				if err != nil {
 					http.Error(w, "Invalid Request", 400)
 					return
 				}
+				v := r.URL.Query()
+				v.Add("auth", parseRes)
+
 				b, err := ioutil.ReadAll(r.Body)
 				r.Body.Close()
 				if err != nil {
 					http.Error(w, "Invalid Request", 400)
 					return
 				}
-				v := r.URL.Query()
-				v.Add("user", user)
-				v.Add("password", pass)
 				recv.Receive(b, v)
 				mchan.Time("http.accept", startReceiveT)
 			})
@@ -107,7 +122,7 @@ func main() {
 				return
 			}
 			l := r.Header.Get("Authorization")
-			user, _, err := auth.ParseRaw(l)
+			user, err := auth.Parse(l)
 			if err != nil {
 				http.Error(w, "Unable to parse headers.", 400)
 				return

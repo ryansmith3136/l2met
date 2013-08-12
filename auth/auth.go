@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"github.com/kr/fernet"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -35,72 +34,31 @@ func EncryptAndSign(b []byte) ([]byte, error) {
 	return []byte(""), errors.New("Unable to sign payload.")
 }
 
-func parseAuthHeader(r *http.Request) (string, error) {
-	header, ok := r.Header["Authorization"]
-	if !ok {
-		return "", errors.New("Unable to parse Authorization header.")
-	}
-	return header[0], nil
-}
-
 // Extract the username and password from the authorization
 // line of an HTTP header. This function will handle the
 // parsing and decoding of the line.
-func ParseRaw(authLine string) (string, string, error) {
+func Parse(authLine string) (string, error) {
 	parts := strings.SplitN(authLine, " ", 2)
 	if len(parts) != 2 {
-		return "", "", errors.New("Authorization header malformed.")
+		return "", errors.New("Authorization header malformed.")
 	}
-
 	method := parts[0]
 	if method != "Basic" {
-		return "", "", errors.New("Authorization must be basic.")
+		return "", errors.New("Authorization must be basic.")
 	}
-
 	payload := parts[1]
 	decodedPayload, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-
-	userPass := strings.SplitN(string(decodedPayload), ":", 2)
-	switch len(userPass) {
-	case 1:
-		return userPass[0], "", nil
-	case 2:
-		return userPass[0], userPass[1], nil
-	}
-
-	return "", "", errors.New("Unable to parse username or password.")
+	return string(decodedPayload), nil
 }
 
-// ParseAndDecrypt returns the outlet's API credentials which
-// are expected to be signed & encrypted and stuffed into the
-// authorization header of the HTTP request.
-func ParseAndDecrypt(r *http.Request) (string, string, error) {
-	header, err := parseAuthHeader(r)
-	if err != nil {
-		return "", "", err
+func Decrypt(s string) (string, string, error) {
+	msg := fernet.VerifyAndDecrypt([]byte(s), ttl, keys)
+	if msg == nil {
+		return "", "", errors.New("Unable to decrypt.")
 	}
-
-	user, _, err := ParseRaw(header)
-	if err != nil {
-		return "", "", err
-	}
-
-	// If we have gotten here, we have a signed, authentication request.
-	// If we can verify & decrypt, then we will pass the decrypted credenti
-	// to the caller. Most of the time, the username and password will be
-	// credentials to Librato metric API. We don't care about the
-	// validity of those credentials here. If they are wrong
-	// the metrics will be dropped in the outlet. Keep an eye on HTTP
-	// authentication errors from the log output of the outlets.
-	if len(keys) > 0 {
-		s := fernet.VerifyAndDecrypt([]byte(user), ttl, keys)
-		if s != nil {
-			parts := strings.Split(string(s), ":")
-			return parts[0], parts[1], nil
-		}
-	}
-	return "", "", errors.New("End of Authentication chain reached.")
+	parts := strings.Split(string(msg), ":")
+	return parts[0], parts[1], nil
 }
