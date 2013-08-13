@@ -23,7 +23,11 @@ type libratoAttrs struct {
 type LibratoMetric struct {
 	Name   string        `json:"name"`
 	Time   int64         `json:"measure_time"`
-	Val    float64       `json:"value"`
+	Val    float64       `json:"value,omitempty"`
+	Count  int           `json:"count,omitempty"`
+	Sum    float64       `json:"sum,omitempty"`
+	Max    float64       `json:"max,omitempty"`
+	Min    float64       `json:"min,omitempty"`
 	Source string        `json:"source,omitempty"`
 	Auth   string        `json:"-"`
 	Attr   *libratoAttrs `json:"attributes,omitempty"`
@@ -64,16 +68,11 @@ func (b *Bucket) Metrics() []*LibratoMetric {
 // The standard emitter. All log data with `measure.foo` will
 // be mapped to the MeasureEmitter.
 func (b *Bucket) EmitMeasurements() []*LibratoMetric {
-	metrics := make([]*LibratoMetric, 9)
-	metrics[0] = b.Metric("min", b.Min())
+	metrics := make([]*LibratoMetric, 4)
+	metrics[0] = b.ComplexMetric()
 	metrics[1] = b.Metric("median", b.Median())
 	metrics[2] = b.Metric("p95", b.P95())
 	metrics[3] = b.Metric("p99", b.P99())
-	metrics[4] = b.Metric("max", b.Max())
-	metrics[5] = b.Metric("mean", b.Mean())
-	metrics[6] = b.Metric("sum", b.Sum())
-	metrics[7] = b.Metric("count", float64(b.Count()))
-	metrics[8] = b.Metric("last", b.Last())
 	return metrics
 }
 
@@ -87,6 +86,23 @@ func (b *Bucket) EmiteSamples() []*LibratoMetric {
 	metrics := make([]*LibratoMetric, 1)
 	metrics[0] = b.Metric("last", b.Last())
 	return metrics
+}
+
+func (b *Bucket) ComplexMetric() *LibratoMetric {
+	return &LibratoMetric{
+		Attr: &libratoAttrs{
+			Min:   0,
+			Units: b.Id.Units,
+		},
+		Name:   b.Id.Name,
+		Source: b.Id.Source,
+		Time:   b.Id.Time.Unix(),
+		Auth:   b.Id.Auth,
+		Min:    b.Min(),
+		Max:    b.Max(),
+		Sum:    b.Sum(),
+		Count:  b.Count(),
+	}
 }
 
 func (b *Bucket) Metric(name string, val float64) *LibratoMetric {
