@@ -65,7 +65,7 @@ func New() *D {
 		"Time to wait before sending data to store or outlet. "+
 			"Example:60s 30s 1m")
 
-	flag.DurationVar(&d.OutletInterval, "outlet-interval", time.Second*30,
+	flag.DurationVar(&d.OutletInterval, "outlet-interval", time.Second,
 		"Time to wait before outlets read buckets from the store. "+
 			"Example:60s 30s 1m")
 
