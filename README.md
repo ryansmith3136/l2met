@@ -22,7 +22,7 @@ The easiest way to get l2met up and running is to deploy to Heroku. This guide a
 
 ```bash
 $ curl https://drone.io/github.com/ryandotsmith/l2met/files/l2met.tar.gz | tar xvz
-$ ./setup my-l2met e@foo.com abc123
+$ ./scripts/setup my-l2met e@foo.com abc123
 ...
 Drain URL: https://long-token@my-l2met.herokuapp.com/logs
 ```

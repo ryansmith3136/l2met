@@ -12,6 +12,7 @@ import (
 )
 
 type D struct {
+	PrintVersion     bool
 	AppName          string
 	RedisHost        string
 	RedisPass        string
@@ -36,6 +37,9 @@ type D struct {
 // It is up to the caller to call flag.Parse()
 func New() *D {
 	d := new(D)
+
+	flag.BoolVar(&d.PrintVersion, "version", false,
+		"Print l2met version and sha.")
 
 	flag.StringVar(&d.AppName, "app-name", "l2met",
 		"Prefix internal log messages with this value.")

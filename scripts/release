@@ -1,0 +1,4 @@
+#!/bin/sh
+rm -r conf/version.go
+export pre="package conf\nconst Version = \""
+echo "$pre`git tag -l | tail -n 1`-`git log -1 --pretty=%h`\"" >>conf/version.go

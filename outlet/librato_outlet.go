@@ -163,7 +163,7 @@ func (l *LibratoOutlet) post(u, p string, body []byte) error {
 		return err
 	}
 	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("User-Agent", "github.com/ryandotsmith/l2met/0")
+	req.Header.Add("User-Agent", "l2met/"+conf.Version)
 	req.SetBasicAuth(u, p)
 	resp, err := l.conn.Do(req)
 	if err != nil {

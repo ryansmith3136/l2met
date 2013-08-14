@@ -11,6 +11,7 @@ import (
 	"github.com/ryandotsmith/l2met/reader"
 	"github.com/ryandotsmith/l2met/receiver"
 	"github.com/ryandotsmith/l2met/store"
+	"os"
 	"log"
 	"net/http"
 	"runtime"
@@ -26,6 +27,11 @@ var cfg *conf.D
 func main() {
 	cfg = conf.New()
 	flag.Parse()
+
+	if cfg.PrintVersion {
+		fmt.Println(conf.Version)
+		os.Exit(0)
+	}
 
 	// Can be passed to other modules
 	// as an internal metrics channel.
