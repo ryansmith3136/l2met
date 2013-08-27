@@ -18,7 +18,7 @@ type libratoAttrs struct {
 // can handle. Because there is not a 1-1 parity
 // with the statistical functions that a bucket offers and
 // the types of data the Librato API accepts (e.g. Librato does-
-// not have support for p50, p95, p99) we need to expand
+// not have support for perc50, perc95, perc99) we need to expand
 // our bucket into a set of LibratoMetric(s).
 type LibratoMetric struct {
 	Name   string        `json:"name"`
@@ -71,8 +71,8 @@ func (b *Bucket) EmitMeasurements() []*LibratoMetric {
 	metrics := make([]*LibratoMetric, 4)
 	metrics[0] = b.ComplexMetric()
 	metrics[1] = b.Metric("median", b.Median())
-	metrics[2] = b.Metric("p95", b.P95())
-	metrics[3] = b.Metric("p99", b.P99())
+	metrics[2] = b.Metric("perc95", b.Perc95())
+	metrics[3] = b.Metric("perc99", b.Perc99())
 	return metrics
 }
 
@@ -173,7 +173,7 @@ func (b *Bucket) Median() float64 {
 	return b.Vals[pos]
 }
 
-func (b *Bucket) P95() float64 {
+func (b *Bucket) Perc95() float64 {
 	if b.Count() == 0 {
 		return float64(0)
 	}
@@ -182,7 +182,7 @@ func (b *Bucket) P95() float64 {
 	return b.Vals[pos]
 }
 
-func (b *Bucket) P99() float64 {
+func (b *Bucket) Perc99() float64 {
 	if b.Count() == 0 {
 		return float64(0)
 	}
